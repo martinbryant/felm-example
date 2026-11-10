@@ -32,6 +32,9 @@ type Keycloak =
     abstract init: options: KeycloakInitOptions -> Promise<bool>
     abstract login: options: KeycloakLoginOptions -> Promise<unit>
     abstract logout: options: KeycloakLoginOptions -> Promise<unit>
+    /// Refreshes the token if it expires within `minValidity` seconds.
+    /// Resolves true if a new token was fetched, false if the current one is still valid.
+    abstract updateToken: minValidity: int -> Promise<bool>
 
 let keycloakInstance = importDefault<JsConstructor> "keycloak-js"
 

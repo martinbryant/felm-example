@@ -49,6 +49,7 @@ type Msg
     | LinkClicked Browser.UrlRequest
     | LoginClicked
     | LogoutClicked
+    | TokenRefreshed String
     | GotMe (Result Http.Error String)
 
 
@@ -58,13 +59,16 @@ port requestLogin : () -> Cmd msg
 port requestLogout : () -> Cmd msg
 
 
+port tokenRefreshed : (String -> msg) -> Sub msg
+
+
 main : Program Flags Model Msg
 main =
     Browser.application
         { init = init
         , view = view
         , update = update
-        , subscriptions = \_ -> Sub.none
+        , subscriptions = \_ -> tokenRefreshed TokenRefreshed
         , onUrlChange = UrlChanged
         , onUrlRequest = LinkClicked
         }
@@ -139,6 +143,14 @@ update msg model =
 
         LogoutClicked ->
             ( model, requestLogout () )
+
+        TokenRefreshed token ->
+            case model.auth of
+                Authenticated user ->
+                    ( { model | auth = Authenticated { user | token = token } }, Cmd.none )
+
+                Anonymous ->
+                    ( model, Cmd.none )
 
         GotMe (Ok userId) ->
             ( { model | apiCall = Loaded userId }, Cmd.none )

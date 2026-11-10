@@ -30,6 +30,9 @@ let Elm: ElmNamespace = importMember "./elm/Main.elm"
 let mount (node: Element) (flags: Flags) : ElmApp =
     Elm.Main.init (createObj [ "node" ==> node; "flags" ==> toPlainJsObj flags ])
 
+/// Sends a value into an incoming Elm port by name (e.g. "tokenRefreshed").
+let sendPort (app: ElmApp) (portName: string) (value: 'a) = app.ports?(portName)?send value
+
 /// Subscribes to an outgoing Elm port by name (e.g. "requestLogin").
 let subscribePort (app: ElmApp) (portName: string) (handler: unit -> unit) =
     app.ports?(portName)?subscribe (fun (_: obj) -> handler ())
