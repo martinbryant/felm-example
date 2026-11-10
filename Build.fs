@@ -20,14 +20,14 @@ Target.create "RestoreClientDependencies" (fun _ -> run npm [ "ci" ] ".")
 Target.create "Bundle" (fun _ ->
     [
         "server", dotnet [ "publish"; "-c"; "Release"; "-o"; deployPath ] serverPath
-        "client", dotnet [ "fable"; "-o"; "output"; "-s"; "--run"; "npx"; "vite"; "build"; ".." ] fsharpPath
+        "client", dotnet [ "fable"; "-o"; "output"; "-s"; "--run"; "node"; "vite.mjs"; "build" ] fsharpPath
     ]
     |> runParallel)
 
 Target.create "Run" (fun _ ->
     [
         "server", dotnet [ "watch"; "run" ] serverPath
-        "client", dotnet [ "fable"; "watch"; "-o"; "output"; "-s"; "--run"; "npx"; "vite"; ".." ] fsharpPath
+        "client", dotnet [ "fable"; "watch"; "-o"; "output"; "-s"; "--run"; "node"; "vite.mjs" ] fsharpPath
     ]
     |> runParallel)
 

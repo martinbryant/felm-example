@@ -2,6 +2,11 @@ source https://api.nuget.org/v3/index.json
 framework: net10.0
 
 nuget Saturn
+nuget FSharp.SystemTextJson
+nuget Marten ~> 9
+# Fable.Remoting.Server accepts >= 2.3, which resolves to 11.x (net11 only)
+nuget Microsoft.AspNetCore.WebUtilities ~> 10.0
+nuget Microsoft.Net.Http.Headers ~> 10.0
 nuget Newtonsoft.Json
 nuget Fable.Core
 nuget Fable.Browser.Dom

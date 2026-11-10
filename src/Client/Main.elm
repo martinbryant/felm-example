@@ -1,68 +1,200 @@
-port module Main exposing (main)
+module Main exposing (main)
 
-import Browser
+import Api
+import Browser exposing (Document)
 import Browser.Navigation as Nav
-import Html exposing (..)
-import Html.Attributes exposing (href)
-import Html.Events exposing (onClick)
-import Http
-import Json.Decode as Decode
-import Url
-import Url.Parser as Parser exposing (Parser)
-
-
-type Route
-    = Home
-    | Login
-    | NotFound
-
-
-type Auth
-    = Anonymous
-    | Authenticated { name : String }
-
-
-type ApiCall
-    = Idle
-    | Loading
-    | Loaded String
-    | Failed String
+import Html
+import Page exposing (Page)
+import Page.Home as Home
+import Page.Login as Login
+import Page.NotFound as NotFound
+import Page.Todo as Todo
+import Ports
+import Route exposing (Route)
+import Session exposing (Session)
+import Url exposing (Url)
 
 
 type alias Flags =
     { authenticated : Bool
     , name : String
+    , token : String
     }
 
 
-type alias Model =
-    { key : Nav.Key
-    , route : Route
-    , auth : Auth
-    , apiCall : ApiCall
-    , pendingCalls : List (String -> Cmd Msg)
-    }
+
+-- MODEL
+
+
+type Model
+    = Redirect Session
+    | NotFound Session
+    | Home Home.Model
+    | Login Login.Model
+    | Todo Todo.Model
+
+
+init : Flags -> Url -> Nav.Key -> ( Model, Cmd Msg )
+init flags url navKey =
+    let
+        viewer =
+            if flags.authenticated then
+                Just
+                    { name = flags.name
+                    , cred = Api.credFromToken flags.token
+                    }
+
+            else
+                Nothing
+    in
+    changeRouteTo (Route.fromUrl url) (Redirect (Session.fromViewer navKey viewer))
+
+
+
+-- VIEW
+
+
+view : Model -> Document Msg
+view model =
+    let
+        viewer =
+            Session.viewer (toSession model)
+
+        viewPage page toMsg config =
+            let
+                { title, body } =
+                    Page.view viewer page config
+            in
+            { title = title
+            , body = List.map (Html.map toMsg) body
+            }
+    in
+    case model of
+        Redirect _ ->
+            Page.view viewer Page.Other { title = "", content = Html.text "" }
+
+        NotFound _ ->
+            Page.view viewer Page.Other NotFound.view
+
+        Home home ->
+            viewPage Page.Home GotHomeMsg (Home.view home)
+
+        Login login ->
+            viewPage Page.Login GotLoginMsg (Login.view login)
+
+        Todo todo ->
+            viewPage Page.Todo GotTodoMsg (Todo.view todo)
+
+
+
+-- UPDATE
 
 
 type Msg
-    = UrlChanged Url.Url
-    | LinkClicked Browser.UrlRequest
-    | LoginClicked
-    | LogoutClicked
-    | GotToken String
-    | GotMe (Result Http.Error String)
+    = ChangedUrl Url
+    | ClickedLink Browser.UrlRequest
+    | GotHomeMsg Home.Msg
+    | GotLoginMsg Login.Msg
+    | GotTodoMsg Todo.Msg
 
 
-port requestLogin : () -> Cmd msg
+toSession : Model -> Session
+toSession page =
+    case page of
+        Redirect session ->
+            session
+
+        NotFound session ->
+            session
+
+        Home home ->
+            Home.toSession home
+
+        Login login ->
+            Login.toSession login
+
+        Todo todo ->
+            Todo.toSession todo
 
 
-port requestLogout : () -> Cmd msg
+changeRouteTo : Maybe Route -> Model -> ( Model, Cmd Msg )
+changeRouteTo maybeRoute model =
+    let
+        session =
+            toSession model
+    in
+    case maybeRoute of
+        Nothing ->
+            ( NotFound session, Cmd.none )
+
+        Just Route.Home ->
+            Home.init session
+                |> updateWith Home GotHomeMsg
+
+        Just Route.Login ->
+            Login.init session
+                |> updateWith Login GotLoginMsg
+
+        Just Route.Logout ->
+            ( model, Ports.requestLogout () )
+
+        Just (Route.Todo id) ->
+            Todo.init session id
+                |> updateWith Todo GotTodoMsg
 
 
-port requestToken : () -> Cmd msg
+update : Msg -> Model -> ( Model, Cmd Msg )
+update msg model =
+    case ( msg, model ) of
+        ( ClickedLink urlRequest, _ ) ->
+            case urlRequest of
+                Browser.Internal url ->
+                    ( model
+                    , Nav.pushUrl (Session.navKey (toSession model)) (Url.toString url)
+                    )
+
+                Browser.External href ->
+                    ( model, Nav.load href )
+
+        ( ChangedUrl url, _ ) ->
+            changeRouteTo (Route.fromUrl url) model
+
+        ( GotHomeMsg subMsg, Home home ) ->
+            Home.update subMsg home
+                |> updateWith Home GotHomeMsg
+
+        ( GotLoginMsg subMsg, Login login ) ->
+            Login.update subMsg login
+                |> updateWith Login GotLoginMsg
+
+        ( GotTodoMsg subMsg, Todo todo ) ->
+            Todo.update subMsg todo
+                |> updateWith Todo GotTodoMsg
+
+        ( _, _ ) ->
+            -- Disregard messages that arrived for the wrong page, e.g. a late
+            -- HTTP response after navigating away.
+            ( model, Cmd.none )
 
 
-port gotToken : (String -> msg) -> Sub msg
+updateWith : (subModel -> Model) -> (subMsg -> Msg) -> ( subModel, Cmd subMsg ) -> ( Model, Cmd Msg )
+updateWith toModel toMsg ( subModel, subCmd ) =
+    ( toModel subModel
+    , Cmd.map toMsg subCmd
+    )
+
+
+
+-- SUBSCRIPTIONS
+
+
+subscriptions : Model -> Sub Msg
+subscriptions _ =
+    Sub.none
+
+
+
+-- MAIN
 
 
 main : Program Flags Model Msg
@@ -71,169 +203,7 @@ main =
         { init = init
         , view = view
         , update = update
-        , subscriptions = \_ -> gotToken GotToken
-        , onUrlChange = UrlChanged
-        , onUrlRequest = LinkClicked
+        , subscriptions = subscriptions
+        , onUrlChange = ChangedUrl
+        , onUrlRequest = ClickedLink
         }
-
-
-routeParser : Parser (Route -> a) a
-routeParser =
-    Parser.oneOf
-        [ Parser.map Home Parser.top
-        , Parser.map Login (Parser.s "login")
-        ]
-
-
-toRoute : Url.Url -> Route
-toRoute url =
-    Maybe.withDefault NotFound (Parser.parse routeParser url)
-
-
-init : Flags -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
-init flags url key =
-    let
-        auth =
-            if flags.authenticated then
-                Authenticated { name = flags.name }
-
-            else
-                Anonymous
-
-        model =
-            { key = key, route = toRoute url, auth = auth, apiCall = Idle, pendingCalls = [] }
-    in
-    case auth of
-        Authenticated _ ->
-            withToken fetchMe { model | apiCall = Loading }
-
-        Anonymous ->
-            ( model, Cmd.none )
-
-
-{-| Runs an API call once JS has handed back a token that is valid right now.
-JS refreshes the token first if it is about to expire, so no token is ever
-kept in the model.
--}
-withToken : (String -> Cmd Msg) -> Model -> ( Model, Cmd Msg )
-withToken call model =
-    ( { model | pendingCalls = call :: model.pendingCalls }, requestToken () )
-
-
-fetchMe : String -> Cmd Msg
-fetchMe token =
-    Http.request
-        { method = "GET"
-        , headers = [ Http.header "Authorization" ("Bearer " ++ token) ]
-        , url = "/api/me"
-        , body = Http.emptyBody
-        , expect = Http.expectJson GotMe meDecoder
-        , timeout = Nothing
-        , tracker = Nothing
-        }
-
-
-meDecoder : Decode.Decoder String
-meDecoder =
-    Decode.field "userId" Decode.string
-
-
-update : Msg -> Model -> ( Model, Cmd Msg )
-update msg model =
-    case msg of
-        UrlChanged url ->
-            ( { model | route = toRoute url }, Cmd.none )
-
-        LinkClicked (Browser.Internal url) ->
-            ( model, Nav.pushUrl model.key (Url.toString url) )
-
-        LinkClicked (Browser.External href_) ->
-            ( model, Nav.load href_ )
-
-        LoginClicked ->
-            ( model, requestLogin () )
-
-        LogoutClicked ->
-            ( model, requestLogout () )
-
-        GotToken token ->
-            ( { model | pendingCalls = [] }
-            , Cmd.batch (List.map (\call -> call token) model.pendingCalls)
-            )
-
-        GotMe (Ok userId) ->
-            ( { model | apiCall = Loaded userId }, Cmd.none )
-
-        GotMe (Err _) ->
-            ( { model | apiCall = Failed "could not reach the server" }, Cmd.none )
-
-
-view : Model -> Browser.Document Msg
-view model =
-    { title = "felm-example"
-    , body =
-        [ case model.route of
-            Home ->
-                viewHome model
-
-            Login ->
-                viewLogin model.auth
-
-            NotFound ->
-                text "Not found"
-        ]
-    }
-
-
-viewHome : Model -> Html Msg
-viewHome model =
-    div []
-        [ h1 [] [ text "felm-example" ]
-        , case model.auth of
-            Authenticated { name } ->
-                div []
-                    [ p [] [ text ("Hello, " ++ name) ]
-                    , viewApiCall model.apiCall
-                    , button [ onClick LogoutClicked ] [ text "Log out" ]
-                    ]
-
-            Anonymous ->
-                div []
-                    [ p [] [ text "You are not logged in." ]
-                    , button [ onClick LoginClicked ] [ text "Log in" ]
-                    , p [] [ a [ href "/login" ] [ text "Go to login page" ] ]
-                    ]
-        ]
-
-
-viewLogin : Auth -> Html Msg
-viewLogin auth =
-    case auth of
-        Authenticated { name } ->
-            div []
-                [ h1 [] [ text "Log in" ]
-                , p [] [ text ("Already logged in as " ++ name) ]
-                , a [ href "/" ] [ text "Go home" ]
-                ]
-
-        Anonymous ->
-            div []
-                [ h1 [] [ text "Log in" ]
-                , button [ onClick LoginClicked ] [ text "Log in with Keycloak" ]
-                ]
-
-
-viewApiCall : ApiCall -> Html Msg
-viewApiCall apiCall =
-    case apiCall of
-        Idle ->
-            text ""
-
-        Loading ->
-            p [] [ text "Checking in with the server..." ]
-
-        Loaded userId ->
-            p [] [ text ("Server says: hello, user " ++ userId) ]
-
-        Failed message ->
-            p [] [ text ("Server error: " ++ message) ]

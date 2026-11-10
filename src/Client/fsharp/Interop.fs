@@ -7,7 +7,12 @@ open Browser.Types
 /// Flags passed into Elm's `init` at boot. Elm auto-decodes a plain JS
 /// object matching this shape into its own `Flags` record - no manual
 /// Json.Decode wiring needed on either side for this.
-type Flags = { authenticated: bool; name: string }
+type Flags =
+    {
+        authenticated: bool
+        name: string
+        token: string
+    }
 
 type ElmApp = { ports: obj }
 
