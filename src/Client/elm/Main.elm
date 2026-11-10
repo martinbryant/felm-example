@@ -19,7 +19,7 @@ type Route
 
 type Auth
     = Anonymous
-    | Authenticated { name : String, token : String }
+    | Authenticated { name : String }
 
 
 type ApiCall
@@ -32,7 +32,6 @@ type ApiCall
 type alias Flags =
     { authenticated : Bool
     , name : String
-    , token : String
     }
 
 
@@ -41,6 +40,7 @@ type alias Model =
     , route : Route
     , auth : Auth
     , apiCall : ApiCall
+    , pendingCalls : List (String -> Cmd Msg)
     }
 
 
@@ -49,7 +49,7 @@ type Msg
     | LinkClicked Browser.UrlRequest
     | LoginClicked
     | LogoutClicked
-    | TokenRefreshed String
+    | GotToken String
     | GotMe (Result Http.Error String)
 
 
@@ -59,7 +59,10 @@ port requestLogin : () -> Cmd msg
 port requestLogout : () -> Cmd msg
 
 
-port tokenRefreshed : (String -> msg) -> Sub msg
+port requestToken : () -> Cmd msg
+
+
+port gotToken : (String -> msg) -> Sub msg
 
 
 main : Program Flags Model Msg
@@ -68,7 +71,7 @@ main =
         { init = init
         , view = view
         , update = update
-        , subscriptions = \_ -> tokenRefreshed TokenRefreshed
+        , subscriptions = \_ -> gotToken GotToken
         , onUrlChange = UrlChanged
         , onUrlRequest = LinkClicked
         }
@@ -92,20 +95,29 @@ init flags url key =
     let
         auth =
             if flags.authenticated then
-                Authenticated { name = flags.name, token = flags.token }
+                Authenticated { name = flags.name }
 
             else
                 Anonymous
 
         model =
-            { key = key, route = toRoute url, auth = auth, apiCall = Idle }
+            { key = key, route = toRoute url, auth = auth, apiCall = Idle, pendingCalls = [] }
     in
     case auth of
-        Authenticated { token } ->
-            ( { model | apiCall = Loading }, fetchMe token )
+        Authenticated _ ->
+            withToken fetchMe { model | apiCall = Loading }
 
         Anonymous ->
             ( model, Cmd.none )
+
+
+{-| Runs an API call once JS has handed back a token that is valid right now.
+JS refreshes the token first if it is about to expire, so no token is ever
+kept in the model.
+-}
+withToken : (String -> Cmd Msg) -> Model -> ( Model, Cmd Msg )
+withToken call model =
+    ( { model | pendingCalls = call :: model.pendingCalls }, requestToken () )
 
 
 fetchMe : String -> Cmd Msg
@@ -144,13 +156,10 @@ update msg model =
         LogoutClicked ->
             ( model, requestLogout () )
 
-        TokenRefreshed token ->
-            case model.auth of
-                Authenticated user ->
-                    ( { model | auth = Authenticated { user | token = token } }, Cmd.none )
-
-                Anonymous ->
-                    ( model, Cmd.none )
+        GotToken token ->
+            ( { model | pendingCalls = [] }
+            , Cmd.batch (List.map (\call -> call token) model.pendingCalls)
+            )
 
         GotMe (Ok userId) ->
             ( { model | apiCall = Loaded userId }, Cmd.none )

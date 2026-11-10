@@ -12,26 +12,20 @@ let initOptions: KeycloakInitOptions =
         responseMode = "query"
     }
 
-/// How often to check the token, and how close to expiry (in seconds) it must be
-/// before Keycloak is asked for a new one.
-let refreshCheckMs = 30_000
-let refreshMinValiditySeconds = 60
+/// Minimum remaining lifetime (seconds) a token must have to be handed to Elm.
+/// Keycloak only contacts the server for a new one if it's closer to expiry than this.
+let minTokenValiditySeconds = 30
 
-/// Keeps the access token fresh and pushes each new one into Elm. If the
-/// session can no longer be refreshed (e.g. the refresh token expired or the
-/// user was logged out elsewhere), sends the user back through login.
-let startTokenRefresh (app: ElmApp) =
-    let check () =
-        (keycloak.updateToken refreshMinValiditySeconds)
-            .``then``(
-                (fun refreshed ->
-                    if refreshed then
-                        sendPort app "tokenRefreshed" keycloak.token),
-                (fun _ -> keycloak.login { redirectUri = windowLocation } |> ignore)
-            )
-        |> ignore
-
-    Fable.Core.JS.setInterval check refreshCheckMs |> ignore
+/// Answers Elm's `requestToken` port with a token that is valid right now,
+/// refreshing it first if needed. If the session can no longer be refreshed
+/// (refresh token expired, logged out elsewhere) the user goes back through login.
+let provideToken (app: ElmApp) () =
+    (keycloak.updateToken minTokenValiditySeconds)
+        .``then``(
+            (fun _ -> sendPort app "gotToken" keycloak.token),
+            (fun _ -> keycloak.login { redirectUri = windowLocation } |> ignore)
+        )
+    |> ignore
 
 let onInitialized (authenticated: bool) =
     let flags: Flags =
@@ -42,7 +36,6 @@ let onInitialized (authenticated: bool) =
                      keycloak.tokenParsed.given_name
                  else
                      "")
-            token = (if authenticated then keycloak.token else "")
         }
 
     let node = document.getElementById "app"
@@ -50,9 +43,7 @@ let onInitialized (authenticated: bool) =
 
     subscribePort app "requestLogin" (fun () -> keycloak.login { redirectUri = windowLocation } |> ignore)
     subscribePort app "requestLogout" (fun () -> keycloak.logout { redirectUri = windowLocation } |> ignore)
-
-    if authenticated then
-        startTokenRefresh app
+    subscribePort app "requestToken" (provideToken app)
 
 // Fable.Core.JS.Promise doesn't expose a `promise { }` computation expression,
 // so the init callback is chained directly via `.then` (an F# keyword, hence

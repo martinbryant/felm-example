@@ -7,12 +7,7 @@ open Browser.Types
 /// Flags passed into Elm's `init` at boot. Elm auto-decodes a plain JS
 /// object matching this shape into its own `Flags` record - no manual
 /// Json.Decode wiring needed on either side for this.
-type Flags =
-    {
-        authenticated: bool
-        name: string
-        token: string
-    }
+type Flags = { authenticated: bool; name: string }
 
 type ElmApp = { ports: obj }
 
@@ -30,7 +25,7 @@ let Elm: ElmNamespace = importMember "./elm/Main.elm"
 let mount (node: Element) (flags: Flags) : ElmApp =
     Elm.Main.init (createObj [ "node" ==> node; "flags" ==> toPlainJsObj flags ])
 
-/// Sends a value into an incoming Elm port by name (e.g. "tokenRefreshed").
+/// Sends a value into an incoming Elm port by name (e.g. "gotToken").
 let sendPort (app: ElmApp) (portName: string) (value: 'a) = app.ports?(portName)?send value
 
 /// Subscribes to an outgoing Elm port by name (e.g. "requestLogin").
