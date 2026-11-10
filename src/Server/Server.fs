@@ -26,12 +26,21 @@ let apiRouter =
         get "/me" meHandler
     }
 
-// Dev-only server: Vite (:8080) serves the client and its own SPA fallback
-// handles direct navigation to "/login". This server only answers "/api/*" —
-// static-file serving and SPA-fallback routes only become relevant once a
-// production bundle combines server + built client assets, which is out of
-// scope for this pass.
-let webApp = router { forward "/api" apiRouter }
+// In development Vite (:8080) serves the client and proxies "/api/*" here, so only
+// the API router is ever hit. In production this server also serves the built
+// client (see `use_static` below): anything that isn't a static file or an API
+// route falls through to index.html so Elm's path-based routing (e.g. a refresh
+// on "/login") works. Unknown "/api/*" paths 404 instead of returning HTML.
+let apiNotFound: HttpHandler =
+    routeStartsWith "/api" >=> setStatusCode 404 >=> text "Not found"
+
+let spaFallback: HttpHandler =
+    GET
+    >=> setHttpHeader "Cache-Control" "no-cache"
+    >=> htmlFile "public/index.html"
+
+let webApp =
+    choose [ router { forward "/api" apiRouter }; apiNotFound; spaFallback ]
 
 let jwt (services: IServiceCollection) =
     let config = services.BuildServiceProvider().GetService<IConfiguration>()
@@ -60,6 +69,7 @@ let configureApp (builder: IApplicationBuilder) = builder.UseAuthentication()
 let app =
     application {
         use_router webApp
+        use_static "public"
         app_config configureApp
         service_config jwt
         memory_cache

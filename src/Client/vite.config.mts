@@ -15,6 +15,8 @@ export default defineConfig({
     plugins: [elmPlugin({ pathToElm: "elm" })],
     build: {
         outDir: "../../deploy/public",
+        // outDir is outside the Vite root, so opt in to clearing it.
+        emptyOutDir: true,
     },
     server: {
         port: 8080,

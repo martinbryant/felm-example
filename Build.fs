@@ -17,6 +17,13 @@ Target.create "Clean" (fun _ ->
 
 Target.create "RestoreClientDependencies" (fun _ -> run npm [ "ci" ] ".")
 
+Target.create "Bundle" (fun _ ->
+    [
+        "server", dotnet [ "publish"; "-c"; "Release"; "-o"; deployPath ] serverPath
+        "client", dotnet [ "fable"; "-o"; "output"; "-s"; "--run"; "npx"; "vite"; "build"; ".." ] fsharpPath
+    ]
+    |> runParallel)
+
 Target.create "Run" (fun _ ->
     [
         "server", dotnet [ "watch"; "run" ] serverPath
