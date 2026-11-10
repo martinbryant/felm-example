@@ -4,10 +4,12 @@ open Browser
 open Keycloak
 open Interop
 
+// No silentCheckSsoRedirectUri: check-sso does a top-level redirect to Keycloak
+// and back (prompt=none) instead of using a hidden iframe. That avoids the
+// sandboxed iframe and any reliance on third-party cookies.
 let initOptions: KeycloakInitOptions =
     {
         onLoad = "check-sso"
-        silentCheckSsoRedirectUri = $"{windowLocation}/silent-check-sso.html"
         enableLogging = true
         responseMode = "query"
         // keycloak-js's login-status iframe is awaited by every updateToken call and

@@ -18,7 +18,6 @@ type TokenParsed = { given_name: string }
 type KeycloakInitOptions =
     {
         onLoad: string
-        silentCheckSsoRedirectUri: string
         enableLogging: bool
         responseMode: string
         checkLoginIframe: bool
