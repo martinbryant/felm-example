@@ -7,11 +7,12 @@ initializeContext ()
 
 let serverPath = Path.getFullName "src/Server"
 let clientPath = Path.getFullName "src/Client"
+let fsharpPath = Path.getFullName "src/Client/fsharp"
 let deployPath = Path.getFullName "deploy"
 
 Target.create "Clean" (fun _ ->
     Shell.cleanDir deployPath
-    run dotnet [ "fable"; "clean"; "--yes" ] clientPath // Delete *.fs.js files created by Fable
+    run dotnet [ "fable"; "clean"; "--yes" ] fsharpPath // Delete *.fs.js files created by Fable
 )
 
 Target.create "RestoreClientDependencies" (fun _ -> run npm [ "ci" ] ".")
@@ -19,17 +20,17 @@ Target.create "RestoreClientDependencies" (fun _ -> run npm [ "ci" ] ".")
 Target.create "Run" (fun _ ->
     [
         "server", dotnet [ "watch"; "run" ] serverPath
-        "client", dotnet [ "fable"; "watch"; "-o"; "output"; "-s"; "--run"; "npx"; "vite" ] clientPath
+        "client", dotnet [ "fable"; "watch"; "-o"; "output"; "-s"; "--run"; "npx"; "vite"; ".." ] fsharpPath
     ]
     |> runParallel)
 
 Target.create "Format" (fun _ ->
     run dotnet [ "fantomas"; "." ] "src"
-    run elmFormat [ "elm"; "--yes" ] clientPath)
+    run elmFormat [ "."; "--yes" ] clientPath)
 
 Target.create "CheckFormat" (fun _ ->
     run dotnet [ "fantomas"; "."; "--check" ] "src"
-    run elmFormat [ "elm"; "--validate" ] clientPath)
+    run elmFormat [ "."; "--validate" ] clientPath)
 
 open Fake.Core.TargetOperators
 

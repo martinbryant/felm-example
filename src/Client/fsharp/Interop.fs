@@ -16,11 +16,11 @@ type ElmMainModule =
 
 type ElmNamespace = { Main: ElmMainModule }
 
-/// vite-plugin-elm compiles elm/Main.elm and exposes it as a named `Elm`
+/// vite-plugin-elm compiles Main.elm and exposes it as a named `Elm`
 /// export, keyed by the Elm module's own name ("Main"). Written relative to
-/// this .fs file's own location (elm/ is a sibling directory) - Fable
+/// this .fs file's own location (Main.elm sits one directory up) - Fable
 /// rewrites the path to stay correct once compiled into ./output/.
-let Elm: ElmNamespace = importMember "./elm/Main.elm"
+let Elm: ElmNamespace = importMember "../Main.elm"
 
 let mount (node: Element) (flags: Flags) : ElmApp =
     Elm.Main.init (createObj [ "node" ==> node; "flags" ==> toPlainJsObj flags ])

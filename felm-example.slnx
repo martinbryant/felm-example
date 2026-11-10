@@ -10,7 +10,7 @@
     <File Path="paket.lock" />
   </Folder>
   <Folder Name="/src/">
-    <Project Path="src/Client/Client.fsproj" />
+    <Project Path="src/Client/fsharp/Client.fsproj" />
     <Project Path="src/Server/Server.fsproj" />
   </Folder>
   <Project Path="Build.fsproj" />
