@@ -21,6 +21,7 @@ type KeycloakInitOptions =
         silentCheckSsoRedirectUri: string
         enableLogging: bool
         responseMode: string
+        checkLoginIframe: bool
     }
 
 type KeycloakLoginOptions = { redirectUri: string }

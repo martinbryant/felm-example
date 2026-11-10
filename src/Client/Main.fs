@@ -10,6 +10,10 @@ let initOptions: KeycloakInitOptions =
         silentCheckSsoRedirectUri = $"{windowLocation}/silent-check-sso.html"
         enableLogging = true
         responseMode = "query"
+        // keycloak-js's login-status iframe is awaited by every updateToken call and
+        // never answers in this setup, leaving the promise pending forever. Session
+        // validity is instead discovered when the token refresh itself is attempted.
+        checkLoginIframe = false
     }
 
 /// Minimum remaining lifetime (seconds) a token must have to be handed to Elm.
