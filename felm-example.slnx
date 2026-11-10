@@ -1,0 +1,17 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/Solution Items/">
+    <File Path="package.json" />
+    <File Path="paket.dependencies" />
+    <File Path="paket.lock" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Client/Client.fsproj" />
+    <Project Path="src/Server/Server.fsproj" />
+  </Folder>
+  <Project Path="Build.fsproj" />
+</Solution>

@@ -1,0 +1,17 @@
+{
+  "clientId": "felm-client",
+  "name": "felm-example",
+  "enabled": true,
+  "protocol": "openid-connect",
+  "publicClient": true,
+  "standardFlowEnabled": true,
+  "directAccessGrantsEnabled": false,
+  "implicitFlowEnabled": false,
+  "serviceAccountsEnabled": false,
+  "rootUrl": "http://localhost:8080",
+  "baseUrl": "/",
+  "redirectUris": ["http://localhost:8080/*"],
+  "webOrigins": ["http://localhost:8080"],
+  "attributes": { "pkce.code.challenge.method": "S256" },
+  "defaultClientScopes": ["web-origins", "acr", "profile", "roles", "email"]
+}
