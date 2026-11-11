@@ -1,10 +1,11 @@
 module Page.NotFound exposing (view)
 
-import Html exposing (Html, h1, text)
+import Html exposing (Html, text)
+import Ui
 
 
 view : { title : String, content : Html msg }
 view =
     { title = "Not found"
-    , content = h1 [] [ text "Not found" ]
+    , content = Ui.pageTitle "Not found"
     }

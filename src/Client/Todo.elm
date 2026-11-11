@@ -1,4 +1,4 @@
-module Todo exposing (Event(..), HistoryItem, Todo, decoder, encodeNew, eventLabel, historyDecoder, isCompleted, isDeleted)
+module Todo exposing (Event(..), HistoryItem, Todo, decoder, encodeNew, eventName, historyDecoder, isCompleted, isDeleted, shortDate)
 
 {-| The todo domain types and their JSON, as served by `/api/todo`.
 -}
@@ -38,17 +38,24 @@ isDeleted todo =
     todo.deleted /= Nothing
 
 
-eventLabel : Event -> String
-eventLabel event =
+eventName : Event -> String
+eventName event =
     case event of
-        Created description ->
-            "Created: " ++ description
+        Created _ ->
+            "Created"
 
         Completed ->
             "Completed"
 
         Deleted ->
             "Deleted"
+
+
+{-| "2026-11-10T19:42:04.1+00:00" -> "2026-11-10 19:42".
+-}
+shortDate : String -> String
+shortDate iso =
+    String.left 10 iso ++ " " ++ String.slice 11 16 iso
 
 
 decoder : Decoder Todo

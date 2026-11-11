@@ -1,14 +1,15 @@
 module Page.Home exposing (Model, Msg, init, toSession, update, view)
 
 import Api
-import Html exposing (Html, a, button, div, form, h1, input, label, li, ol, p, text)
-import Html.Attributes exposing (checked, placeholder, style, type_, value)
-import Html.Events exposing (onCheck, onInput, onSubmit)
+import Html exposing (Html, a, button, div, form, input, li, ol, p, text)
+import Html.Attributes exposing (class, classList, disabled, placeholder, type_, value)
+import Html.Events exposing (onInput, onSubmit)
 import Json.Decode as Decode
 import Ports
 import Route
 import Session exposing (Session)
 import Todo exposing (Todo)
+import Ui
 
 
 type alias Model =
@@ -120,14 +121,20 @@ view : Model -> { title : String, content : Html Msg }
 view model =
     { title = "Todos"
     , content =
-        div []
-            [ h1 [] [ text "Todos" ]
-            , case Session.viewer model.session of
-                Nothing ->
-                    p [] [ text "You are not logged in." ]
+        div [ class "mx-auto max-w-xl" ]
+            [ Ui.pageTitle "todo-app"
+            , Ui.box
+                [ case Session.viewer model.session of
+                    Nothing ->
+                        p []
+                            [ text "Please "
+                            , a [ Route.href Route.Login, class "text-teal-600 underline" ] [ text "log in" ]
+                            , text " to see your todos."
+                            ]
 
-                Just _ ->
-                    viewTodos model
+                    Just _ ->
+                        viewTodos model
+                ]
             ]
     }
 
@@ -135,45 +142,53 @@ view model =
 viewTodos : Model -> Html Msg
 viewTodos model =
     div []
-        [ viewError model.error
+        [ case model.error of
+            Just error ->
+                Ui.errorMessage error
+
+            Nothing ->
+                text ""
         , case model.todos of
             Loading ->
-                p [] [ text "Loading..." ]
+                p [ class "text-gray-500" ] [ text "Loading..." ]
 
             Loaded todos ->
-                ol []
+                ol [ class "mb-6 list-decimal space-y-1 pl-6" ]
                     (todos
                         |> List.filter (\todo -> model.showDeleted || not (Todo.isDeleted todo))
                         |> List.map viewTodo
                     )
-        , form [ onSubmit SubmitClicked ]
-            [ input [ type_ "text", placeholder "What needs doing?", value model.input, onInput InputChanged ] []
-            , button [ type_ "submit" ] [ text "Add" ]
+        , form [ class "flex gap-2", onSubmit SubmitClicked ]
+            [ input
+                [ type_ "text"
+                , class "flex-1 rounded border border-gray-300 px-3 py-2 focus:border-teal-500 focus:outline-none"
+                , placeholder "What needs to be done?"
+                , value model.input
+                , onInput InputChanged
+                ]
+                []
+            , button
+                [ type_ "submit"
+                , Ui.primaryButton
+                , disabled (String.isEmpty (String.trim model.input))
+                ]
+                [ text "Add" ]
             ]
-        , label []
-            [ input [ type_ "checkbox", checked model.showDeleted, onCheck ToggleShowDeleted ] []
-            , text " Show deleted"
-            ]
+        , Ui.toggle
+            { id = "deleted-toggle"
+            , text = "Show deleted?"
+            , isOn = model.showDeleted
+            , onToggle = ToggleShowDeleted
+            }
         ]
 
 
 viewTodo : Todo -> Html Msg
 viewTodo todo =
     li
-        [ if Todo.isCompleted todo || Todo.isDeleted todo then
-            style "text-decoration" "line-through"
-
-          else
-            style "text-decoration" "none"
+        [ classList
+            [ ( "line-through", Todo.isCompleted todo || Todo.isDeleted todo )
+            , ( "text-red-500", Todo.isDeleted todo )
+            ]
         ]
-        [ a [ Route.href (Route.Todo todo.id) ] [ text todo.description ] ]
-
-
-viewError : Maybe Api.Error -> Html msg
-viewError error =
-    case error of
-        Just e ->
-            p [ style "color" "crimson" ] [ text (Api.errorMessage e) ]
-
-        Nothing ->
-            text ""
+        [ a [ Route.href (Route.Todo todo.id), class "hover:underline" ] [ text todo.description ] ]

@@ -1,0 +1,4 @@
+@import "tailwindcss";
+
+/* Tailwind only scans for class names; the Elm views are where they live. */
+@source "./**/*.elm";

@@ -9,7 +9,9 @@
         "keycloak-js": "^26.2.5"
     },
     "devDependencies": {
+        "@tailwindcss/vite": "^4.3.5",
         "elm-format": "^0.8.8",
+        "tailwindcss": "^4.3.5",
         "vite": "^8.3.7",
         "vite-plugin-elm": "^3.1.0"
     }
