@@ -1,11 +1,39 @@
 module EventStore
 
+open Dapper.FSharp.PostgreSQL
 open Marten
+open Npgsql
 open System
-open System.Linq
 open Shared
 
-type EventStorage(store: IDocumentStore) =
+/// A row of the `todo` table; field names are the column names.
+[<CLIMutable>]
+type TodoRow =
+    {
+        id: Guid
+        tenant_id: string
+        description: string
+        created: DateTime
+        completed: DateTime option
+        deleted: DateTime option
+    }
+
+let private todoTable = table'<TodoRow> "todo"
+
+let private asOffset (dateTime: DateTime) =
+    let utc = DateTime.SpecifyKind(dateTime, DateTimeKind.Utc)
+    DateTimeOffset utc
+
+let private toTodo (row: TodoRow) : Todo =
+    {
+        Id = row.id
+        Description = row.description
+        Created = asOffset row.created
+        Completed = Option.map asOffset row.completed
+        Deleted = Option.map asOffset row.deleted
+    }
+
+type EventStorage(store: IDocumentStore, dataSource: NpgsqlDataSource) =
     member _.AddTodo(tenantId: string, data: CreatedData) =
         task {
             use session = store.LightweightSession(tenantId)
@@ -47,21 +75,40 @@ type EventStorage(store: IDocumentStore) =
 
     member _.GetTodo(tenantId: string, id: Guid) =
         task {
-            use session = store.LightweightSession(tenantId)
+            use! connection = dataSource.OpenConnectionAsync()
 
-            // NB: session.Query<Todo>().FirstOrDefaultAsync(fun t -> t.Id = id) bypasses
-            // conjoined tenancy filtering (Marten optimizes single-predicate-by-Id lookups
-            // to a fast path that ignores the tenant scope). Filtering with .Where(...) first
-            // keeps it on the normal LINQ translation path, which does respect tenancy.
-            return! session.Query<Todo>().Where(fun todo -> todo.Id = id).FirstOrDefaultAsync()
+            let! rows =
+                select {
+                    for row in todoTable do
+                        where (row.tenant_id = tenantId && row.id = id)
+                }
+                |> connection.SelectAsync<TodoRow>
+
+            return rows |> Seq.tryHead |> Option.map toTodo |> Option.toObj
         }
         |> Async.AwaitTask
 
-    member _.GetTodos(tenantId: string) =
+    member _.GetTodos(tenantId: string, includeDeleted: bool) =
         task {
-            use session = store.LightweightSession(tenantId)
+            use! connection = dataSource.OpenConnectionAsync()
 
-            return! session.Query<Todo>().ToListAsync()
+            let! rows =
+                if includeDeleted then
+                    select {
+                        for row in todoTable do
+                            where (row.tenant_id = tenantId)
+                            orderBy row.created
+                    }
+                    |> connection.SelectAsync<TodoRow>
+                else
+                    select {
+                        for row in todoTable do
+                            where (row.tenant_id = tenantId && row.deleted = None)
+                            orderBy row.created
+                    }
+                    |> connection.SelectAsync<TodoRow>
+
+            return rows |> Seq.map toTodo |> List.ofSeq
         }
         |> Async.AwaitTask
 

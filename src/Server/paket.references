@@ -2,3 +2,4 @@ Saturn
 Newtonsoft.Json
 FSharp.SystemTextJson
 Marten
+Dapper.FSharp

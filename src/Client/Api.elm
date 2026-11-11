@@ -46,24 +46,43 @@ errorMessage error =
 
 get : Cred -> String -> Decoder a -> (Result Error a -> msg) -> Cmd msg
 get cred path decoder toMsg =
-    request "GET" cred path Http.emptyBody (Http.expectJson (toResult toMsg) decoder)
+    let
+        expect =
+            Http.expectJson (toResult toMsg) decoder
+    in
+    request "GET" cred path Http.emptyBody expect
 
 
 post : Cred -> String -> Encode.Value -> Decoder a -> (Result Error a -> msg) -> Cmd msg
 post cred path body decoder toMsg =
-    request "POST" cred path (Http.jsonBody body) (Http.expectJson (toResult toMsg) decoder)
+    let
+        jsonBody =
+            Http.jsonBody body
+
+        expect =
+            Http.expectJson (toResult toMsg) decoder
+    in
+    request "POST" cred path jsonBody expect
 
 
 {-| Bodiless POST, e.g. `/api/todo/{id}/complete`.
 -}
 postEmpty : Cred -> String -> Decoder a -> (Result Error a -> msg) -> Cmd msg
 postEmpty cred path decoder toMsg =
-    request "POST" cred path Http.emptyBody (Http.expectJson (toResult toMsg) decoder)
+    let
+        expect =
+            Http.expectJson (toResult toMsg) decoder
+    in
+    request "POST" cred path Http.emptyBody expect
 
 
 delete : Cred -> String -> (Result Error () -> msg) -> Cmd msg
 delete cred path toMsg =
-    request "DELETE" cred path Http.emptyBody (Http.expectWhatever (toResult toMsg))
+    let
+        expect =
+            Http.expectWhatever (toResult toMsg)
+    in
+    request "DELETE" cred path Http.emptyBody expect
 
 
 request : String -> Cred -> String -> Http.Body -> Http.Expect msg -> Cmd msg

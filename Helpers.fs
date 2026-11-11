@@ -63,9 +63,9 @@ module Proc =
             cs
             |> Seq.toArray
             |> Array.indexed
-            |> fun x ->
-                printStarting x
-                x
+            |> fun indexed ->
+                printStarting indexed
+                indexed
             |> Array.map redirect
             |> Array.Parallel.map Proc.run
 

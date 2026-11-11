@@ -8,6 +8,8 @@ open JasperFx
 open JasperFx.Events.Projections
 open JasperFx.MultiTenancy
 open Marten
+open Dapper.FSharp.PostgreSQL
+open Npgsql
 open EventStore
 open Projections
 open Shared
@@ -21,17 +23,20 @@ open Saturn
 open Giraffe
 
 /// Todos are partitioned per user: the Keycloak subject is the Marten tenant.
-let private tenantId (ctx: HttpContext) =
-    ctx.User.FindFirst(ClaimTypes.NameIdentifier).Value
+let private tenantId (context: HttpContext) =
+    context.User.FindFirst(ClaimTypes.NameIdentifier).Value
 
-let private eventStorage (ctx: HttpContext) =
-    EventStorage(ctx.GetService<IDocumentStore>())
+let private eventStorage (context: HttpContext) =
+    let store = context.GetService<IDocumentStore>()
+    let dataSource = context.GetService<NpgsqlDataSource>()
+    EventStorage(store, dataSource)
 
-let private canEdit =
-    requiresRole "todo-edit" (RequestErrors.FORBIDDEN "You don't have permission to do this")
+let private forbidden =
+    RequestErrors.FORBIDDEN "You don't have permission to do this"
 
-let private canRemove =
-    requiresRole "todo-remove" (RequestErrors.FORBIDDEN "You don't have permission to do this")
+let private canEdit = requiresRole "todo-edit" forbidden
+
+let private canRemove = requiresRole "todo-remove" forbidden
 
 let private notFound = RequestErrors.NOT_FOUND "Todo not found"
 
@@ -68,93 +73,114 @@ let private toEntry (item: TodoHistoryItem) =
         }
 
 let private listTodos: HttpHandler =
-    fun next ctx ->
+    fun next context ->
         task {
-            let storage = eventStorage ctx
-            let! todos = storage.GetTodos(tenantId ctx)
-            return! json (List.ofSeq todos) next ctx
+            let storage = eventStorage context
+            // Deleted todos are left out unless ?includeDeleted=true.
+            let includeDeleted =
+                match context.TryGetQueryStringValue "includeDeleted" with
+                | Some value ->
+                    match Boolean.TryParse value with
+                    | true, parsed -> parsed
+                    | _ -> false
+                | None -> false
+
+            let tenant = tenantId context
+            let! todos = storage.GetTodos(tenant, includeDeleted)
+            return! json todos next context
         }
 
 let private getTodo (id: Guid) : HttpHandler =
-    fun next ctx ->
+    fun next context ->
         task {
-            let storage = eventStorage ctx
-            let! todo = storage.GetTodo(tenantId ctx, id)
+            let storage = eventStorage context
+            let tenant = tenantId context
+            let! todo = storage.GetTodo(tenant, id)
+            let isMissing = isNull (box todo)
 
-            if isNull (box todo) then
-                return! notFound next ctx
+            if isMissing then
+                return! notFound next context
             else
-                return! json todo next ctx
+                return! json todo next context
         }
 
 let private getHistory (id: Guid) : HttpHandler =
-    fun next ctx ->
+    fun next context ->
         task {
-            let storage = eventStorage ctx
-            let! history = storage.GetHistory(tenantId ctx, id)
+            let storage = eventStorage context
+            let tenant = tenantId context
+            let! history = storage.GetHistory(tenant, id)
+            let isMissing = isNull (box history)
 
-            if isNull (box history) then
-                return! notFound next ctx
+            if isMissing then
+                return! notFound next context
             else
-                return! json (List.map toEntry history.Items) next ctx
+                let entries = List.map toEntry history.Items
+                return! json entries next context
         }
 
 let private createTodo: HttpHandler =
     canEdit
-    >=> fun next ctx ->
+    >=> fun next context ->
         task {
-            let! body = ctx.BindJsonAsync<NewTodo>()
+            let! body = context.BindJsonAsync<NewTodo>()
+            let isInvalid = isNull (box body) || not (Todo.isValid body.Description)
 
-            if isNull (box body) || not (Todo.isValid body.Description) then
-                return! RequestErrors.BAD_REQUEST "A description is required" next ctx
+            if isInvalid then
+                return! RequestErrors.BAD_REQUEST "A description is required" next context
             else
-                let storage = eventStorage ctx
+                let storage = eventStorage context
+                let tenant = tenantId context
                 let id = Guid.NewGuid()
 
-                do!
-                    storage.AddTodo(
-                        tenantId ctx,
-                        {
-                            Id = id
-                            Description = body.Description.Trim()
-                        }
-                    )
+                let data =
+                    {
+                        Id = id
+                        Description = body.Description.Trim()
+                    }
 
-                let! todo = storage.GetTodo(tenantId ctx, id)
-                return! (setStatusCode 201 >=> json todo) next ctx
+                do! storage.AddTodo(tenant, data)
+
+                let! todo = storage.GetTodo(tenant, id)
+                let created = setStatusCode 201 >=> json todo
+                return! created next context
         }
 
 let private completeTodo (id: Guid) : HttpHandler =
     canEdit
-    >=> fun next ctx ->
+    >=> fun next context ->
         task {
-            let storage = eventStorage ctx
-            let! existing = storage.GetTodo(tenantId ctx, id)
+            let storage = eventStorage context
+            let tenant = tenantId context
+            let! existing = storage.GetTodo(tenant, id)
+            let isMissing = isNull (box existing)
 
-            if isNull (box existing) then
-                return! notFound next ctx
+            if isMissing then
+                return! notFound next context
             else
-                do! storage.CompleteTodo(tenantId ctx, id)
-                let! todo = storage.GetTodo(tenantId ctx, id)
-                return! json todo next ctx
+                do! storage.CompleteTodo(tenant, id)
+                let! todo = storage.GetTodo(tenant, id)
+                return! json todo next context
         }
 
 let private removeTodo (id: Guid) : HttpHandler =
     canRemove
-    >=> fun next ctx ->
+    >=> fun next context ->
         task {
-            let storage = eventStorage ctx
-            let! existing = storage.GetTodo(tenantId ctx, id)
+            let storage = eventStorage context
+            let tenant = tenantId context
+            let! existing = storage.GetTodo(tenant, id)
+            let isMissing = isNull (box existing)
 
-            if isNull (box existing) then
-                return! notFound next ctx
+            if isMissing then
+                return! notFound next context
             else
-                do! storage.RemoveTodo(tenantId ctx, id)
-                return! setStatusCode 204 next ctx
+                do! storage.RemoveTodo(tenant, id)
+                return! setStatusCode 204 next context
         }
 
 /// All todo endpoints live under /api/todo:
-///   GET    /api/todo                 list
+///   GET    /api/todo                 list (?includeDeleted=true to include deleted; default false)
 ///   POST   /api/todo                 create        { "description": "..." }
 ///   GET    /api/todo/{id}            one todo
 ///   GET    /api/todo/{id}/history    its events
@@ -198,19 +224,35 @@ let webApp =
     choose [ routeStartsWith "/api/todo" >=> todoRoutes; apiNotFound; spaFallback ]
 
 let marten (services: IServiceCollection) =
-    services.AddMarten(fun (options: StoreOptions) ->
-        let config = services.BuildServiceProvider().GetService<IConfiguration>()
+    // Dapper.FSharp reads the `todo` table; it needs F# options mapped to nullable columns.
+    OptionTypes.register ()
 
-        options.Connection(config.GetConnectionString "Db")
-        options.AutoCreateSchemaObjects <- AutoCreate.CreateOrUpdate
-        options.Events.TenancyStyle <- TenancyStyle.Conjoined
+    services.AddSingleton<NpgsqlDataSource>(fun provider ->
+        let config = provider.GetService<IConfiguration>()
+        let connectionString = config.GetConnectionString "Db"
+        NpgsqlDataSource.Create connectionString)
+    |> ignore
 
-        options.Projections.Add(TodoProjection(), ProjectionLifecycle.Inline)
-        options.Projections.Add(TodoHistoryProjection(), ProjectionLifecycle.Live)
+    services
+        .AddMarten(fun (options: StoreOptions) ->
+            let config = services.BuildServiceProvider().GetService<IConfiguration>()
+            let connectionString = config.GetConnectionString "Db"
 
-        options.Schema.For<Todo>().MultiTenanted() |> ignore
+            options.Connection connectionString
+            options.AutoCreateSchemaObjects <- AutoCreate.CreateOrUpdate
+            options.Events.TenancyStyle <- TenancyStyle.Conjoined
 
-        options.UseSystemTextJsonForSerialization(configure = _.Converters.Add(JsonFSharpConverter())))
+            options.Projections.Add(TodoProjection(), ProjectionLifecycle.Inline)
+            options.Projections.Add(TodoHistoryProjection(), ProjectionLifecycle.Live)
+
+            let configureJson (serializerOptions: JsonSerializerOptions) =
+                let converter = JsonFSharpConverter()
+                serializerOptions.Converters.Add converter
+
+            options.UseSystemTextJsonForSerialization(configure = configureJson))
+        // Marten creates its tables lazily on first use, but Dapper reads `todo`
+        // without going through Marten, so create the schema when the app starts.
+        .ApplyAllDatabaseChangesOnStartup()
     |> ignore
 
     services

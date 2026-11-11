@@ -55,39 +55,61 @@ eventName event =
 
 decoder : Decoder Todo
 decoder =
-    Decode.map5 Todo
-        (Decode.field "id" Decode.string)
-        (Decode.field "description" Decode.string)
-        (Decode.field "created" Iso8601.decoder)
-        (Decode.field "completed" (Decode.nullable Iso8601.decoder))
-        (Decode.field "deleted" (Decode.nullable Iso8601.decoder))
+    let
+        optionalTime =
+            Decode.nullable Iso8601.decoder
+
+        id =
+            Decode.field "id" Decode.string
+
+        description =
+            Decode.field "description" Decode.string
+
+        created =
+            Decode.field "created" Iso8601.decoder
+
+        completed =
+            Decode.field "completed" optionalTime
+
+        deleted =
+            Decode.field "deleted" optionalTime
+    in
+    Decode.map5 Todo id description created completed deleted
 
 
 encodeNew : String -> Encode.Value
 encodeNew description =
-    Encode.object [ ( "description", Encode.string description ) ]
+    let
+        value =
+            Encode.string description
+    in
+    Encode.object [ ( "description", value ) ]
 
 
 historyDecoder : Decoder (List HistoryItem)
 historyDecoder =
-    Decode.list
-        (Decode.map2 HistoryItem
-            (Decode.field "at" Iso8601.decoder)
-            (Decode.field "event" Decode.string
-                |> Decode.andThen
-                    (\kind ->
-                        case kind of
-                            "created" ->
-                                Decode.field "description" Decode.string |> Decode.map Created
+    let
+        at =
+            Decode.field "at" Iso8601.decoder
 
-                            "completed" ->
-                                Decode.succeed Completed
+        event =
+            Decode.field "event" Decode.string
+                |> Decode.andThen eventDecoder
+    in
+    Decode.list (Decode.map2 HistoryItem at event)
 
-                            "deleted" ->
-                                Decode.succeed Deleted
 
-                            _ ->
-                                Decode.fail ("Unknown todo event: " ++ kind)
-                    )
-            )
-        )
+eventDecoder : String -> Decoder Event
+eventDecoder kind =
+    case kind of
+        "created" ->
+            Decode.field "description" Decode.string |> Decode.map Created
+
+        "completed" ->
+            Decode.succeed Completed
+
+        "deleted" ->
+            Decode.succeed Deleted
+
+        _ ->
+            Decode.fail ("Unknown todo event: " ++ kind)

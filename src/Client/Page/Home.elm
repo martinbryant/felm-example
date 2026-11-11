@@ -41,11 +41,30 @@ init session =
       }
     , case Session.cred session of
         Just cred ->
-            Api.get cred "/api/todo" (Decode.list Todo.decoder) GotTodos
+            fetchTodos cred False
 
         Nothing ->
             Cmd.none
     )
+
+
+{-| The server leaves deleted todos out unless asked.
+-}
+fetchTodos : Api.Cred -> Bool -> Cmd Msg
+fetchTodos cred includeDeleted =
+    Api.get cred
+        ("/api/todo?includeDeleted=" ++ boolToString includeDeleted)
+        (Decode.list Todo.decoder)
+        GotTodos
+
+
+boolToString : Bool -> String
+boolToString bool =
+    if bool then
+        "true"
+
+    else
+        "false"
 
 
 toSession : Model -> Session
@@ -66,17 +85,33 @@ update msg model =
             ( { model | input = input }, Cmd.none, Nothing )
 
         ToggleShowDeleted show ->
-            ( { model | showDeleted = show }, Cmd.none, Nothing )
+            ( { model | showDeleted = show }
+            , case Session.cred model.session of
+                Just cred ->
+                    fetchTodos cred show
+
+                Nothing ->
+                    Cmd.none
+            , Nothing
+            )
 
         SubmitClicked ->
-            if String.isEmpty (String.trim model.input) then
+            let
+                description =
+                    String.trim model.input
+            in
+            if String.isEmpty description then
                 ( model, Cmd.none, Nothing )
 
             else
                 case Session.cred model.session of
                     Just cred ->
+                        let
+                            body =
+                                Todo.encodeNew description
+                        in
                         ( { model | input = "" }
-                        , Api.post cred "/api/todo" (Todo.encodeNew (String.trim model.input)) Todo.decoder AddedTodo
+                        , Api.post cred "/api/todo" body Todo.decoder AddedTodo
                         , Nothing
                         )
 
@@ -94,13 +129,13 @@ update msg model =
 
 
 mapLoaded : (a -> a) -> Status a -> Status a
-mapLoaded f status =
+mapLoaded transform status =
     case status of
         Loading ->
             Loading
 
         Loaded a ->
-            Loaded (f a)
+            Loaded (transform a)
 
 
 view : Model -> { title : String, content : Html Msg }
@@ -127,17 +162,21 @@ view model =
 
 viewTodos : Model -> Html Msg
 viewTodos model =
+    let
+        addDisabled =
+            String.isEmpty (String.trim model.input)
+    in
     div []
         [ case model.todos of
             Loading ->
                 p [ class "text-gray-500" ] [ text "Loading..." ]
 
             Loaded todos ->
-                ol [ class "mb-6 list-decimal space-y-1 pl-6" ]
-                    (todos
-                        |> List.filter (\todo -> model.showDeleted || not (Todo.isDeleted todo))
-                        |> List.map viewTodo
-                    )
+                let
+                    items =
+                        List.map viewTodo todos
+                in
+                ol [ class "mb-6 list-decimal space-y-1 pl-6" ] items
         , form [ class "flex gap-2", onSubmit SubmitClicked ]
             [ input
                 [ type_ "text"
@@ -150,7 +189,7 @@ viewTodos model =
             , button
                 [ type_ "submit"
                 , Ui.primaryButton
-                , disabled (String.isEmpty (String.trim model.input))
+                , disabled addDisabled
                 ]
                 [ text "Add" ]
             ]
@@ -165,10 +204,17 @@ viewTodos model =
 
 viewTodo : Todo -> Html Msg
 viewTodo todo =
+    let
+        deleted =
+            Todo.isDeleted todo
+
+        finished =
+            Todo.isCompleted todo || deleted
+    in
     li
         [ classList
-            [ ( "line-through", Todo.isCompleted todo || Todo.isDeleted todo )
-            , ( "text-red-500", Todo.isDeleted todo )
+            [ ( "line-through", finished )
+            , ( "text-red-500", deleted )
             ]
         ]
         [ a [ Route.href (Route.Todo todo.id), class "hover:underline" ] [ text todo.description ] ]

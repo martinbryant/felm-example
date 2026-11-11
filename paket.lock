@@ -1,6 +1,10 @@
 RESTRICTION: == net10.0
 NUGET
   remote: https://api.nuget.org/v3/index.json
+    Dapper (2.1.89)
+    Dapper.FSharp (4.10)
+      Dapper (>= 2.1.72)
+      FSharp.Core (>= 10.1.201)
     Fable.Browser.Blob (1.4)
       Fable.Core (>= 3.2.8)
       FSharp.Core (>= 4.7.2)

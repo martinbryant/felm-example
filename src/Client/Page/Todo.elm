@@ -86,8 +86,12 @@ update msg model =
             ( model, Cmd.none, Just error )
 
         CompleteClicked ->
+            let
+                path =
+                    todoPath model.id ++ "/complete"
+            in
             ( model
-            , withCred model (\cred -> Api.postEmpty cred (todoPath model.id ++ "/complete") Todo.decoder Completed)
+            , withCred model (\cred -> Api.postEmpty cred path Todo.decoder Completed)
             , Nothing
             )
 
@@ -107,14 +111,22 @@ update msg model =
             ( { model | confirmingRemove = False }, Cmd.none, Nothing )
 
         ConfirmRemoveClicked ->
+            let
+                path =
+                    todoPath model.id
+            in
             ( { model | confirmingRemove = False }
-            , withCred model (\cred -> Api.delete cred (todoPath model.id) Removed)
+            , withCred model (\cred -> Api.delete cred path Removed)
             , Nothing
             )
 
         Removed (Ok ()) ->
+            let
+                navKey =
+                    Session.navKey model.session
+            in
             ( model
-            , Route.pushUrl (Session.navKey model.session) Route.Home
+            , Route.pushUrl navKey Route.Home
             , Nothing
             )
 
@@ -167,18 +179,27 @@ viewTodo zone todo history =
     let
         finished =
             Todo.isCompleted todo || Todo.isDeleted todo
+
+        deleted =
+            Todo.isDeleted todo
+
+        created =
+            "Created on " ++ Format.dateTime zone todo.created
+
+        historyItems =
+            List.map (viewHistoryItem zone) history
     in
     div []
         [ h1
             [ classList [ ( "text-2xl font-semibold", True ), ( "line-through", finished ) ] ]
             [ text todo.description ]
-        , p [ class "mb-4 text-sm text-gray-500" ] [ text ("Created on " ++ Format.dateTime zone todo.created) ]
+        , p [ class "mb-4 text-sm text-gray-500" ] [ text created ]
         , div [ class "flex gap-2" ]
             [ button [ Ui.successButton, disabled finished, onClick CompleteClicked ] [ text "Complete" ]
-            , button [ Ui.dangerButton, disabled (Todo.isDeleted todo), onClick RemoveClicked ] [ text "Delete" ]
+            , button [ Ui.dangerButton, disabled deleted, onClick RemoveClicked ] [ text "Delete" ]
             ]
         , h2 [ class "mt-8 mb-4 inline-block rounded bg-teal-500 px-3 py-1 text-lg text-white" ] [ text "History" ]
-        , ol [ class "ml-4 border-l-2 border-gray-200" ] (List.map (viewHistoryItem zone) history)
+        , ol [ class "ml-4 border-l-2 border-gray-200" ] historyItems
         ]
 
 
@@ -195,13 +216,22 @@ viewHistoryItem zone item =
 
                 Todo.Deleted ->
                     ( "bg-red-500", "✕" )
+
+        name =
+            Todo.eventName item.event
+
+        date =
+            Format.dateTime zone item.at
+
+        iconClass =
+            "absolute -left-4 top-0 flex h-8 w-8 items-center justify-center rounded-full text-white " ++ colour
     in
     li [ class "relative pb-6 pl-8" ]
         [ span
-            [ class ("absolute -left-4 top-0 flex h-8 w-8 items-center justify-center rounded-full text-white " ++ colour) ]
+            [ class iconClass ]
             [ text icon ]
-        , p [ class "font-medium" ] [ text (Todo.eventName item.event) ]
-        , p [ class "text-sm text-gray-500" ] [ text (Format.dateTime zone item.at) ]
+        , p [ class "font-medium" ] [ text name ]
+        , p [ class "text-sm text-gray-500" ] [ text date ]
         ]
 
 

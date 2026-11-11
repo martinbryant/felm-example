@@ -12,10 +12,10 @@ import Page.Todo as Todo
 import Ports
 import Route exposing (Route)
 import Session exposing (Session)
-import Toast exposing (Toast)
-import Toasty
 import Task
 import Time
+import Toast exposing (Toast)
+import Toasty
 import Url exposing (Url)
 
 
@@ -57,13 +57,24 @@ init flags url navKey =
 
             else
                 Nothing
+
+        route =
+            Route.fromUrl url
+
+        session =
+            Session.fromViewer navKey viewer
+
+        model =
+            { screen = Redirect session
+            , zone = Time.utc
+            , toasties = Toasty.initialState
+            }
+
+        fetchZone =
+            Task.perform GotZone Time.here
     in
-    changeRouteTo (Route.fromUrl url)
-        { screen = Redirect (Session.fromViewer navKey viewer)
-        , zone = Time.utc
-        , toasties = Toasty.initialState
-        }
-        |> Tuple.mapSecond (\cmd -> Cmd.batch [ cmd, Task.perform GotZone Time.here ])
+    changeRouteTo route model
+        |> Tuple.mapSecond (\cmd -> Cmd.batch [ cmd, fetchZone ])
 
 
 
@@ -104,13 +115,25 @@ viewScreen zone screen =
             Page.view viewer Page.Other NotFound.view
 
         Home home ->
-            viewPage Page.Home GotHomeMsg (Home.view home)
+            let
+                config =
+                    Home.view home
+            in
+            viewPage Page.Home GotHomeMsg config
 
         Login login ->
-            viewPage Page.Login GotLoginMsg (Login.view login)
+            let
+                config =
+                    Login.view login
+            in
+            viewPage Page.Login GotLoginMsg config
 
         Todo todo ->
-            viewPage Page.Todo GotTodoMsg (Todo.view zone todo)
+            let
+                config =
+                    Todo.view zone todo
+            in
+            viewPage Page.Todo GotTodoMsg config
 
 
 
@@ -178,15 +201,24 @@ update msg model =
         ( ClickedLink urlRequest, _ ) ->
             case urlRequest of
                 Browser.Internal url ->
-                    ( model
-                    , Nav.pushUrl (Session.navKey (toSession model.screen)) (Url.toString url)
-                    )
+                    let
+                        navKey =
+                            Session.navKey (toSession model.screen)
+
+                        href =
+                            Url.toString url
+                    in
+                    ( model, Nav.pushUrl navKey href )
 
                 Browser.External href ->
                     ( model, Nav.load href )
 
         ( ChangedUrl url, _ ) ->
-            changeRouteTo (Route.fromUrl url) model
+            let
+                route =
+                    Route.fromUrl url
+            in
+            changeRouteTo route model
 
         ( GotZone zone, _ ) ->
             ( { model | zone = zone }, Cmd.none )

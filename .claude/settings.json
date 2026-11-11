@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(elm make *)",
+      "Bash(elm install *)",
+      "Bash(elm repl)",
+      "Bash(yes)",
+      "Bash(npx vite build *)",
+      "Bash(npm run *)",
+      "Bash(dotnet build *)",
+      "Bash(dotnet paket install)",
+      "Bash(ls *)",
+      "Bash(grep *)",
+      "Bash(docker ps *)"
+    ]
+  }
+}
