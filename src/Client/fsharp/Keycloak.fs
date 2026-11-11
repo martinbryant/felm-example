@@ -45,7 +45,7 @@ let config: KeycloakConfig =
     {
         url = Env.VITE_AUTH_ORIGIN
         realm = "safe-todo"
-        clientId = "felm-client"
+        clientId = "todo-client"
     }
 
 let keycloak = create config

@@ -5,7 +5,6 @@ import Html exposing (Html, a, button, div, form, input, li, ol, p, text)
 import Html.Attributes exposing (class, classList, disabled, placeholder, type_, value)
 import Html.Events exposing (onInput, onSubmit)
 import Json.Decode as Decode
-import Ports
 import Route
 import Session exposing (Session)
 import Todo exposing (Todo)
@@ -17,7 +16,6 @@ type alias Model =
     , todos : Status (List Todo)
     , input : String
     , showDeleted : Bool
-    , error : Maybe Api.Error
     }
 
 
@@ -40,7 +38,6 @@ init session =
       , todos = Loading
       , input = ""
       , showDeleted = False
-      , error = Nothing
       }
     , case Session.cred session of
         Just cred ->
@@ -56,42 +53,44 @@ toSession =
     .session
 
 
-update : Msg -> Model -> ( Model, Cmd Msg )
+update : Msg -> Model -> ( Model, Cmd Msg, Maybe Api.Error )
 update msg model =
     case msg of
         GotTodos (Ok todos) ->
-            ( { model | todos = Loaded todos, error = Nothing }, Cmd.none )
+            ( { model | todos = Loaded todos }, Cmd.none, Nothing )
 
         GotTodos (Err error) ->
-            failed error { model | todos = Loaded [] }
+            ( { model | todos = Loaded [] }, Cmd.none, Just error )
 
         InputChanged input ->
-            ( { model | input = input }, Cmd.none )
+            ( { model | input = input }, Cmd.none, Nothing )
 
         ToggleShowDeleted show ->
-            ( { model | showDeleted = show }, Cmd.none )
+            ( { model | showDeleted = show }, Cmd.none, Nothing )
 
         SubmitClicked ->
             if String.isEmpty (String.trim model.input) then
-                ( model, Cmd.none )
+                ( model, Cmd.none, Nothing )
 
             else
                 case Session.cred model.session of
                     Just cred ->
                         ( { model | input = "" }
                         , Api.post cred "/api/todo" (Todo.encodeNew (String.trim model.input)) Todo.decoder AddedTodo
+                        , Nothing
                         )
 
                     Nothing ->
-                        ( model, Cmd.none )
+                        ( model, Cmd.none, Nothing )
 
         AddedTodo (Ok todo) ->
-            ( { model | todos = mapLoaded (\todos -> todos ++ [ todo ]) model.todos, error = Nothing }
+            ( { model | todos = mapLoaded (\todos -> todos ++ [ todo ]) model.todos }
             , Cmd.none
+            , Nothing
             )
 
         AddedTodo (Err error) ->
-            failed error model
+            ( model, Cmd.none, Just error )
 
 
 mapLoaded : (a -> a) -> Status a -> Status a
@@ -102,19 +101,6 @@ mapLoaded f status =
 
         Loaded a ->
             Loaded (f a)
-
-
-{-| An expired access token comes back as 401. The Keycloak session outlives it,
-so logging in again is a quick redirect that returns with a fresh token.
--}
-failed : Api.Error -> Model -> ( Model, Cmd Msg )
-failed error model =
-    case error of
-        Api.Unauthorized ->
-            ( model, Ports.requestLogin () )
-
-        _ ->
-            ( { model | error = Just error }, Cmd.none )
 
 
 view : Model -> { title : String, content : Html Msg }
@@ -142,13 +128,7 @@ view model =
 viewTodos : Model -> Html Msg
 viewTodos model =
     div []
-        [ case model.error of
-            Just error ->
-                Ui.errorMessage error
-
-            Nothing ->
-                text ""
-        , case model.todos of
+        [ case model.todos of
             Loading ->
                 p [ class "text-gray-500" ] [ text "Loading..." ]
 

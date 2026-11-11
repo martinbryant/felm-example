@@ -4,7 +4,6 @@ import Api
 import Html exposing (Html, a, button, div, h1, h2, li, ol, p, span, text)
 import Html.Attributes exposing (class, classList, disabled)
 import Html.Events exposing (onClick)
-import Ports
 import Route
 import Session exposing (Session)
 import Todo exposing (HistoryItem, Todo)
@@ -16,7 +15,6 @@ type alias Model =
     , id : String
     , todo : Status Todo
     , history : List HistoryItem
-    , error : Maybe Api.Error
     , confirmingRemove : Bool
     }
 
@@ -40,7 +38,7 @@ type Msg
 
 init : Session -> String -> ( Model, Cmd Msg )
 init session id =
-    ( { session = session, id = id, todo = Loading, history = [], error = Nothing, confirmingRemove = False }
+    ( { session = session, id = id, todo = Loading, history = [], confirmingRemove = False }
     , case Session.cred session of
         Just cred ->
             Cmd.batch [ fetchTodo cred id, fetchHistory cred id ]
@@ -70,55 +68,56 @@ toSession =
     .session
 
 
-update : Msg -> Model -> ( Model, Cmd Msg )
+update : Msg -> Model -> ( Model, Cmd Msg, Maybe Api.Error )
 update msg model =
     case msg of
         GotTodo (Ok todo) ->
-            ( { model | todo = Loaded todo }, Cmd.none )
-
-        GotTodo (Err Api.NotFound) ->
-            ( { model | todo = Missing }, Cmd.none )
+            ( { model | todo = Loaded todo }, Cmd.none, Nothing )
 
         GotTodo (Err error) ->
-            failed error { model | todo = Missing }
+            ( { model | todo = Missing }, Cmd.none, Just error )
 
         GotHistory (Ok history) ->
-            ( { model | history = history }, Cmd.none )
+            ( { model | history = history }, Cmd.none, Nothing )
 
         GotHistory (Err error) ->
-            failed error model
+            ( model, Cmd.none, Just error )
 
         CompleteClicked ->
             ( model
             , withCred model (\cred -> Api.postEmpty cred (todoPath model.id ++ "/complete") Todo.decoder Completed)
+            , Nothing
             )
 
         Completed (Ok todo) ->
-            ( { model | todo = Loaded todo, error = Nothing }
+            ( { model | todo = Loaded todo }
             , withCred model (\cred -> fetchHistory cred model.id)
+            , Nothing
             )
 
         Completed (Err error) ->
-            failed error model
+            ( model, Cmd.none, Just error )
 
         RemoveClicked ->
-            ( { model | confirmingRemove = True }, Cmd.none )
+            ( { model | confirmingRemove = True }, Cmd.none, Nothing )
 
         CancelRemoveClicked ->
-            ( { model | confirmingRemove = False }, Cmd.none )
+            ( { model | confirmingRemove = False }, Cmd.none, Nothing )
 
         ConfirmRemoveClicked ->
             ( { model | confirmingRemove = False }
             , withCred model (\cred -> Api.delete cred (todoPath model.id) Removed)
+            , Nothing
             )
 
         Removed (Ok ()) ->
             ( model
             , Route.pushUrl (Session.navKey model.session) Route.Home
+            , Nothing
             )
 
         Removed (Err error) ->
-            failed error model
+            ( model, Cmd.none, Just error )
 
 
 {-| Runs an API call if there is a credential; a guest has nothing to call with.
@@ -133,19 +132,6 @@ withCred model call =
             Cmd.none
 
 
-{-| An expired access token comes back as 401. The Keycloak session outlives it,
-so logging in again is a quick redirect that returns with a fresh token.
--}
-failed : Api.Error -> Model -> ( Model, Cmd Msg )
-failed error model =
-    case error of
-        Api.Unauthorized ->
-            ( model, Ports.requestLogin () )
-
-        _ ->
-            ( { model | error = Just error }, Cmd.none )
-
-
 view : Model -> { title : String, content : Html Msg }
 view model =
     { title = "Todo"
@@ -153,13 +139,7 @@ view model =
         div [ class "mx-auto max-w-xl" ]
             [ Ui.pageTitle "todo-app"
             , Ui.box
-                [ case model.error of
-                    Just error ->
-                        Ui.errorMessage error
-
-                    Nothing ->
-                        text ""
-                , case model.todo of
+                [ case model.todo of
                     Loading ->
                         p [ class "text-gray-500" ] [ text "Loading..." ]
 

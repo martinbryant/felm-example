@@ -12,6 +12,8 @@ import Page.Todo as Todo
 import Ports
 import Route exposing (Route)
 import Session exposing (Session)
+import Toast exposing (Toast)
+import Toasty
 import Url exposing (Url)
 
 
@@ -26,7 +28,13 @@ type alias Flags =
 -- MODEL
 
 
-type Model
+type alias Model =
+    { screen : Screen
+    , toasties : Toasty.Stack Toast
+    }
+
+
+type Screen
     = Redirect Session
     | NotFound Session
     | Home Home.Model
@@ -47,7 +55,10 @@ init flags url navKey =
             else
                 Nothing
     in
-    changeRouteTo (Route.fromUrl url) (Redirect (Session.fromViewer navKey viewer))
+    changeRouteTo (Route.fromUrl url)
+        { screen = Redirect (Session.fromViewer navKey viewer)
+        , toasties = Toasty.initialState
+        }
 
 
 
@@ -57,8 +68,19 @@ init flags url navKey =
 view : Model -> Document Msg
 view model =
     let
+        { title, body } =
+            viewScreen model.screen
+    in
+    { title = title
+    , body = body ++ [ Toasty.view Toast.config Toast.view ToastyMsg model.toasties ]
+    }
+
+
+viewScreen : Screen -> Document Msg
+viewScreen screen =
+    let
         viewer =
-            Session.viewer (toSession model)
+            Session.viewer (toSession screen)
 
         viewPage page toMsg config =
             let
@@ -69,7 +91,7 @@ view model =
             , body = List.map (Html.map toMsg) body
             }
     in
-    case model of
+    case screen of
         Redirect _ ->
             Page.view viewer Page.Other { title = "", content = Html.text "" }
 
@@ -96,9 +118,10 @@ type Msg
     | GotHomeMsg Home.Msg
     | GotLoginMsg Login.Msg
     | GotTodoMsg Todo.Msg
+    | ToastyMsg (Toasty.Msg Toast)
 
 
-toSession : Model -> Session
+toSession : Screen -> Session
 toSession page =
     case page of
         Redirect session ->
@@ -121,36 +144,36 @@ changeRouteTo : Maybe Route -> Model -> ( Model, Cmd Msg )
 changeRouteTo maybeRoute model =
     let
         session =
-            toSession model
+            toSession model.screen
     in
     case maybeRoute of
         Nothing ->
-            ( NotFound session, Cmd.none )
+            ( { model | screen = NotFound session }, Cmd.none )
 
         Just Route.Home ->
             Home.init session
-                |> updateWith Home GotHomeMsg
+                |> updateWith Home GotHomeMsg model
 
         Just Route.Login ->
             Login.init session
-                |> updateWith Login GotLoginMsg
+                |> updateWith Login GotLoginMsg model
 
         Just Route.Logout ->
             ( model, Ports.requestLogout () )
 
         Just (Route.Todo id) ->
             Todo.init session id
-                |> updateWith Todo GotTodoMsg
+                |> updateWith Todo GotTodoMsg model
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    case ( msg, model ) of
+    case ( msg, model.screen ) of
         ( ClickedLink urlRequest, _ ) ->
             case urlRequest of
                 Browser.Internal url ->
                     ( model
-                    , Nav.pushUrl (Session.navKey (toSession model)) (Url.toString url)
+                    , Nav.pushUrl (Session.navKey (toSession model.screen)) (Url.toString url)
                     )
 
                 Browser.External href ->
@@ -159,17 +182,20 @@ update msg model =
         ( ChangedUrl url, _ ) ->
             changeRouteTo (Route.fromUrl url) model
 
+        ( ToastyMsg subMsg, _ ) ->
+            Toasty.update Toast.config ToastyMsg subMsg model
+
         ( GotHomeMsg subMsg, Home home ) ->
             Home.update subMsg home
-                |> updateWith Home GotHomeMsg
+                |> updateWithError Home GotHomeMsg model
 
         ( GotLoginMsg subMsg, Login login ) ->
             Login.update subMsg login
-                |> updateWith Login GotLoginMsg
+                |> updateWith Login GotLoginMsg model
 
         ( GotTodoMsg subMsg, Todo todo ) ->
             Todo.update subMsg todo
-                |> updateWith Todo GotTodoMsg
+                |> updateWithError Todo GotTodoMsg model
 
         ( _, _ ) ->
             -- Disregard messages that arrived for the wrong page, e.g. a late
@@ -177,11 +203,55 @@ update msg model =
             ( model, Cmd.none )
 
 
-updateWith : (subModel -> Model) -> (subMsg -> Msg) -> ( subModel, Cmd subMsg ) -> ( Model, Cmd Msg )
-updateWith toModel toMsg ( subModel, subCmd ) =
-    ( toModel subModel
+updateWith : (subModel -> Screen) -> (subMsg -> Msg) -> Model -> ( subModel, Cmd subMsg ) -> ( Model, Cmd Msg )
+updateWith toScreen toMsg model ( subModel, subCmd ) =
+    ( { model | screen = toScreen subModel }
     , Cmd.map toMsg subCmd
     )
+
+
+{-| Like `updateWith`, for pages that report API failures to be shown as toasts.
+-}
+updateWithError : (subModel -> Screen) -> (subMsg -> Msg) -> Model -> ( subModel, Cmd subMsg, Maybe Api.Error ) -> ( Model, Cmd Msg )
+updateWithError toScreen toMsg model ( subModel, subCmd, maybeError ) =
+    let
+        ( next, cmd ) =
+            updateWith toScreen toMsg model ( subModel, subCmd )
+    in
+    case maybeError of
+        Nothing ->
+            ( next, cmd )
+
+        Just error ->
+            handleError error ( next, cmd )
+
+
+{-| The same reactions as the SAFE example: a toast for every failure, plus a
+fresh login on 401 (the Keycloak session outlives the access token, so it is a
+quick redirect) and back to the list on 404.
+-}
+handleError : Api.Error -> ( Model, Cmd Msg ) -> ( Model, Cmd Msg )
+handleError error ( model, cmd ) =
+    let
+        navKey =
+            Session.navKey (toSession model.screen)
+
+        ( message, extra ) =
+            case error of
+                Api.Unauthorized ->
+                    ( "You must be logged in to do this", Ports.requestLogin () )
+
+                Api.Forbidden ->
+                    ( "You don't have permission to do this", Cmd.none )
+
+                Api.NotFound ->
+                    ( "That todo doesn't exist", Route.pushUrl navKey Route.Home )
+
+                Api.Other _ ->
+                    ( "An unexpected error has occured. Please try again", Cmd.none )
+    in
+    ( model, Cmd.batch [ cmd, extra ] )
+        |> Toasty.addToast Toast.config ToastyMsg message
 
 
 

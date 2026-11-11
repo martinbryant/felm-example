@@ -1,11 +1,10 @@
-module Ui exposing (box, dangerButton, errorMessage, lightButton, pageTitle, primaryButton, successButton, toggle)
+module Ui exposing (box, dangerButton, lightButton, pageTitle, primaryButton, successButton, toggle)
 
 {-| Shared Tailwind building blocks, so the pages agree on what a box, a button
 or a switch looks like.
 -}
 
-import Api
-import Html exposing (Attribute, Html, div, h1, input, label, p, span, text)
+import Html exposing (Attribute, Html, div, h1, input, label, span, text)
 import Html.Attributes exposing (checked, class, for, id, type_)
 import Html.Events exposing (onCheck)
 
@@ -18,11 +17,6 @@ pageTitle title =
 box : List (Html msg) -> Html msg
 box children =
     div [ class "rounded-lg bg-white p-6 shadow-lg" ] children
-
-
-errorMessage : Api.Error -> Html msg
-errorMessage error =
-    p [ class "mb-4 rounded bg-red-100 px-4 py-3 text-red-700" ] [ text (Api.errorMessage error) ]
 
 
 buttonBase : String
