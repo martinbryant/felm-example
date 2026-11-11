@@ -1,11 +1,13 @@
 module Page.Todo exposing (Model, Msg, init, toSession, update, view)
 
 import Api
+import Format
 import Html exposing (Html, a, button, div, h1, h2, li, ol, p, span, text)
 import Html.Attributes exposing (class, classList, disabled)
 import Html.Events exposing (onClick)
 import Route
 import Session exposing (Session)
+import Time
 import Todo exposing (HistoryItem, Todo)
 import Ui
 
@@ -132,8 +134,8 @@ withCred model call =
             Cmd.none
 
 
-view : Model -> { title : String, content : Html Msg }
-view model =
+view : Time.Zone -> Model -> { title : String, content : Html Msg }
+view zone model =
     { title = "Todo"
     , content =
         div [ class "mx-auto max-w-xl" ]
@@ -147,7 +149,7 @@ view model =
                         p [] [ text "That todo could not be found." ]
 
                     Loaded todo ->
-                        viewTodo todo model.history
+                        viewTodo zone todo model.history
                 , p [ class "mt-6" ]
                     [ a [ Route.href Route.Home, class "text-teal-600 hover:underline" ] [ text "< All todos" ] ]
                 ]
@@ -160,8 +162,8 @@ view model =
     }
 
 
-viewTodo : Todo -> List HistoryItem -> Html Msg
-viewTodo todo history =
+viewTodo : Time.Zone -> Todo -> List HistoryItem -> Html Msg
+viewTodo zone todo history =
     let
         finished =
             Todo.isCompleted todo || Todo.isDeleted todo
@@ -170,18 +172,18 @@ viewTodo todo history =
         [ h1
             [ classList [ ( "text-2xl font-semibold", True ), ( "line-through", finished ) ] ]
             [ text todo.description ]
-        , p [ class "mb-4 text-sm text-gray-500" ] [ text ("Created " ++ Todo.shortDate todo.created) ]
+        , p [ class "mb-4 text-sm text-gray-500" ] [ text ("Created on " ++ Format.dateTime zone todo.created) ]
         , div [ class "flex gap-2" ]
             [ button [ Ui.successButton, disabled finished, onClick CompleteClicked ] [ text "Complete" ]
             , button [ Ui.dangerButton, disabled (Todo.isDeleted todo), onClick RemoveClicked ] [ text "Delete" ]
             ]
         , h2 [ class "mt-8 mb-4 inline-block rounded bg-teal-500 px-3 py-1 text-lg text-white" ] [ text "History" ]
-        , ol [ class "ml-4 border-l-2 border-gray-200" ] (List.map viewHistoryItem history)
+        , ol [ class "ml-4 border-l-2 border-gray-200" ] (List.map (viewHistoryItem zone) history)
         ]
 
 
-viewHistoryItem : HistoryItem -> Html msg
-viewHistoryItem item =
+viewHistoryItem : Time.Zone -> HistoryItem -> Html msg
+viewHistoryItem zone item =
     let
         ( colour, icon ) =
             case item.event of
@@ -199,7 +201,7 @@ viewHistoryItem item =
             [ class ("absolute -left-4 top-0 flex h-8 w-8 items-center justify-center rounded-full text-white " ++ colour) ]
             [ text icon ]
         , p [ class "font-medium" ] [ text (Todo.eventName item.event) ]
-        , p [ class "text-sm text-gray-500" ] [ text (Todo.shortDate item.at) ]
+        , p [ class "text-sm text-gray-500" ] [ text (Format.dateTime zone item.at) ]
         ]
 
 

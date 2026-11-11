@@ -14,6 +14,8 @@ import Route exposing (Route)
 import Session exposing (Session)
 import Toast exposing (Toast)
 import Toasty
+import Task
+import Time
 import Url exposing (Url)
 
 
@@ -30,6 +32,7 @@ type alias Flags =
 
 type alias Model =
     { screen : Screen
+    , zone : Time.Zone
     , toasties : Toasty.Stack Toast
     }
 
@@ -57,8 +60,10 @@ init flags url navKey =
     in
     changeRouteTo (Route.fromUrl url)
         { screen = Redirect (Session.fromViewer navKey viewer)
+        , zone = Time.utc
         , toasties = Toasty.initialState
         }
+        |> Tuple.mapSecond (\cmd -> Cmd.batch [ cmd, Task.perform GotZone Time.here ])
 
 
 
@@ -69,15 +74,15 @@ view : Model -> Document Msg
 view model =
     let
         { title, body } =
-            viewScreen model.screen
+            viewScreen model.zone model.screen
     in
     { title = title
     , body = body ++ [ Toasty.view Toast.config Toast.view ToastyMsg model.toasties ]
     }
 
 
-viewScreen : Screen -> Document Msg
-viewScreen screen =
+viewScreen : Time.Zone -> Screen -> Document Msg
+viewScreen zone screen =
     let
         viewer =
             Session.viewer (toSession screen)
@@ -105,7 +110,7 @@ viewScreen screen =
             viewPage Page.Login GotLoginMsg (Login.view login)
 
         Todo todo ->
-            viewPage Page.Todo GotTodoMsg (Todo.view todo)
+            viewPage Page.Todo GotTodoMsg (Todo.view zone todo)
 
 
 
@@ -119,6 +124,7 @@ type Msg
     | GotLoginMsg Login.Msg
     | GotTodoMsg Todo.Msg
     | ToastyMsg (Toasty.Msg Toast)
+    | GotZone Time.Zone
 
 
 toSession : Screen -> Session
@@ -181,6 +187,9 @@ update msg model =
 
         ( ChangedUrl url, _ ) ->
             changeRouteTo (Route.fromUrl url) model
+
+        ( GotZone zone, _ ) ->
+            ( { model | zone = zone }, Cmd.none )
 
         ( ToastyMsg subMsg, _ ) ->
             Toasty.update Toast.config ToastyMsg subMsg model

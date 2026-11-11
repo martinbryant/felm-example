@@ -1,18 +1,20 @@
-module Todo exposing (Event(..), HistoryItem, Todo, decoder, encodeNew, eventName, historyDecoder, isCompleted, isDeleted, shortDate)
+module Todo exposing (Event(..), HistoryItem, Todo, decoder, encodeNew, eventName, historyDecoder, isCompleted, isDeleted)
 
 {-| The todo domain types and their JSON, as served by `/api/todo`.
 -}
 
+import Iso8601
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode
+import Time
 
 
 type alias Todo =
     { id : String
     , description : String
-    , created : String
-    , completed : Maybe String
-    , deleted : Maybe String
+    , created : Time.Posix
+    , completed : Maybe Time.Posix
+    , deleted : Maybe Time.Posix
     }
 
 
@@ -23,7 +25,7 @@ type Event
 
 
 type alias HistoryItem =
-    { at : String
+    { at : Time.Posix
     , event : Event
     }
 
@@ -51,21 +53,14 @@ eventName event =
             "Deleted"
 
 
-{-| "2026-11-10T19:42:04.1+00:00" -> "2026-11-10 19:42".
--}
-shortDate : String -> String
-shortDate iso =
-    String.left 10 iso ++ " " ++ String.slice 11 16 iso
-
-
 decoder : Decoder Todo
 decoder =
     Decode.map5 Todo
         (Decode.field "id" Decode.string)
         (Decode.field "description" Decode.string)
-        (Decode.field "created" Decode.string)
-        (Decode.field "completed" (Decode.nullable Decode.string))
-        (Decode.field "deleted" (Decode.nullable Decode.string))
+        (Decode.field "created" Iso8601.decoder)
+        (Decode.field "completed" (Decode.nullable Iso8601.decoder))
+        (Decode.field "deleted" (Decode.nullable Iso8601.decoder))
 
 
 encodeNew : String -> Encode.Value
@@ -77,7 +72,7 @@ historyDecoder : Decoder (List HistoryItem)
 historyDecoder =
     Decode.list
         (Decode.map2 HistoryItem
-            (Decode.field "at" Decode.string)
+            (Decode.field "at" Iso8601.decoder)
             (Decode.field "event" Decode.string
                 |> Decode.andThen
                     (\kind ->
