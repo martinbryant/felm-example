@@ -30,6 +30,25 @@ type Todo =
         Deleted: DateTimeOffset option
     }
 
+type TodoStatus =
+    | Current
+    | Completed
+    | Deleted
+
+module TodoStatus =
+    let toString status =
+        match status with
+        | Current -> "current"
+        | Completed -> "completed"
+        | Deleted -> "deleted"
+
+    let tryParse (value: string) =
+        match value with
+        | "current" -> Some Current
+        | "completed" -> Some Completed
+        | "deleted" -> Some Deleted
+        | _ -> None
+
 module Todo =
     let isValid (description: string) =
         String.IsNullOrWhiteSpace description |> not

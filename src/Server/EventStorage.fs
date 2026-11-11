@@ -16,6 +16,7 @@ type TodoRow =
         created: DateTime
         completed: DateTime option
         deleted: DateTime option
+        status: string
     }
 
 let private todoTable = table'<TodoRow> "todo"
@@ -88,25 +89,19 @@ type EventStorage(store: IDocumentStore, dataSource: NpgsqlDataSource) =
         }
         |> Async.AwaitTask
 
-    member _.GetTodos(tenantId: string, includeDeleted: bool) =
+    member _.GetTodos(tenantId: string, status: TodoStatus) =
         task {
             use! connection = dataSource.OpenConnectionAsync()
 
+            let statusText = TodoStatus.toString status
+
             let! rows =
-                if includeDeleted then
-                    select {
-                        for row in todoTable do
-                            where (row.tenant_id = tenantId)
-                            orderBy row.created
-                    }
-                    |> connection.SelectAsync<TodoRow>
-                else
-                    select {
-                        for row in todoTable do
-                            where (row.tenant_id = tenantId && row.deleted = None)
-                            orderBy row.created
-                    }
-                    |> connection.SelectAsync<TodoRow>
+                select {
+                    for row in todoTable do
+                        where (row.tenant_id = tenantId && row.status = statusText)
+                        orderBy row.created
+                }
+                |> connection.SelectAsync<TodoRow>
 
             return rows |> Seq.map toTodo |> List.ofSeq
         }

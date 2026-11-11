@@ -22,7 +22,6 @@ open Microsoft.IdentityModel.Tokens
 open Saturn
 open Giraffe
 
-/// Todos are partitioned per user: the Keycloak subject is the Marten tenant.
 let private tenantId (context: HttpContext) =
     context.User.FindFirst(ClaimTypes.NameIdentifier).Value
 
@@ -42,8 +41,6 @@ let private notFound = RequestErrors.NOT_FOUND "Todo not found"
 
 type NewTodo = { Description: string }
 
-/// What the history endpoint returns: events flattened to something a client
-/// can read without knowing the F# union encoding.
 type HistoryEntry =
     {
         At: DateTimeOffset
@@ -76,17 +73,14 @@ let private listTodos: HttpHandler =
     fun next context ->
         task {
             let storage = eventStorage context
-            // Deleted todos are left out unless ?includeDeleted=true.
-            let includeDeleted =
-                match context.TryGetQueryStringValue "includeDeleted" with
-                | Some value ->
-                    match Boolean.TryParse value with
-                    | true, parsed -> parsed
-                    | _ -> false
-                | None -> false
+            
+            let status =
+                context.TryGetQueryStringValue "status"
+                |> Option.bind TodoStatus.tryParse
+                |> Option.defaultValue Current
 
             let tenant = tenantId context
-            let! todos = storage.GetTodos(tenant, includeDeleted)
+            let! todos = storage.GetTodos(tenant, status)
             return! json todos next context
         }
 
@@ -180,7 +174,7 @@ let private removeTodo (id: Guid) : HttpHandler =
         }
 
 /// All todo endpoints live under /api/todo:
-///   GET    /api/todo                 list (?includeDeleted=true to include deleted; default false)
+///   GET    /api/todo                 list (?status=current|completed|deleted; default current)
 ///   POST   /api/todo                 create        { "description": "..." }
 ///   GET    /api/todo/{id}            one todo
 ///   GET    /api/todo/{id}/history    its events

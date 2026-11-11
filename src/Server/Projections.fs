@@ -24,23 +24,48 @@ type TodoProjection() as this =
         table.AddColumn<DateTimeOffset>("created").NotNull() |> ignore
         table.AddColumn<DateTimeOffset>("completed") |> ignore
         table.AddColumn<DateTimeOffset>("deleted") |> ignore
+
+        table.AddColumn<string>("status").NotNull().DefaultValueByString(TodoStatus.toString Current)
+        |> ignore
+
+        let index = IndexDefinition "idx_todo_tenant_status"
+        index.Columns <- [| "tenant_id"; "status" |]
+        table.Indexes.Add index
         this.SchemaObjects.Add table
 
     override _.ApplyAsync(ops: IDocumentOperations, e: IEvent, _: CancellationToken) : ValueTask =
+        let current = TodoStatus.toString Current
+        let completed = TodoStatus.toString Completed
+        let deleted = TodoStatus.toString Deleted
+
         match e.Data with
         | :? TodoEvent as event ->
             match event with
             | TodoCreated data ->
                 ops.QueueSqlCommand(
-                    "insert into todo (id, tenant_id, description, created) values (?, ?, ?, ?)",
+                    "insert into todo (id, tenant_id, description, created, status) values (?, ?, ?, ?, ?)",
                     data.Id,
                     e.TenantId,
                     data.Description,
-                    e.Timestamp
+                    e.Timestamp,
+                    current
                 )
             | TodoCompleted ->
-                ops.QueueSqlCommand("update todo set completed = ? where id = ?", e.Timestamp, e.StreamId)
-            | TodoDeleted -> ops.QueueSqlCommand("update todo set deleted = ? where id = ?", e.Timestamp, e.StreamId)
+                // Deleted wins: completing an already deleted todo leaves it deleted.
+                ops.QueueSqlCommand(
+                    "update todo set completed = ?, status = case when status = ? then status else ? end where id = ?",
+                    e.Timestamp,
+                    deleted,
+                    completed,
+                    e.StreamId
+                )
+            | TodoDeleted ->
+                ops.QueueSqlCommand(
+                    "update todo set deleted = ?, status = ? where id = ?",
+                    e.Timestamp,
+                    deleted,
+                    e.StreamId
+                )
         | _ -> ()
 
         ValueTask.CompletedTask

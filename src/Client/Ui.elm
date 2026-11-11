@@ -1,12 +1,12 @@
-module Ui exposing (box, dangerButton, lightButton, pageTitle, primaryButton, successButton, toggle)
+module Ui exposing (box, dangerButton, lightButton, pageTitle, primaryButton, successButton, tabs)
 
 {-| Shared Tailwind building blocks, so the pages agree on what a box, a button
-or a switch looks like.
+or a tab bar looks like.
 -}
 
-import Html exposing (Attribute, Html, div, h1, input, label, span, text)
-import Html.Attributes exposing (checked, class, for, id, type_)
-import Html.Events exposing (onCheck)
+import Html exposing (Attribute, Html, button, div, h1, text)
+import Html.Attributes exposing (class, type_)
+import Html.Events exposing (onClick)
 
 
 pageTitle : String -> Html msg
@@ -44,21 +44,27 @@ lightButton =
     class "rounded bg-gray-100 px-4 py-2 font-medium text-gray-700 transition hover:bg-gray-200"
 
 
-{-| A rounded on/off switch built on a real checkbox.
+{-| A row of joined buttons where one is active, like Bulma's `buttons has-addons`.
 -}
-toggle : { id : String, text : String, isOn : Bool, onToggle : Bool -> msg } -> Html msg
-toggle config =
-    label [ for config.id, class "mt-6 flex cursor-pointer items-center gap-3 text-gray-700" ]
-        [ input
-            [ type_ "checkbox"
-            , id config.id
-            , class "peer sr-only"
-            , checked config.isOn
-            , onCheck config.onToggle
-            ]
-            []
-        , span
-            [ class "relative h-6 w-11 rounded-full bg-gray-300 transition peer-checked:bg-green-500 after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:transition peer-checked:after:translate-x-5" ]
-            []
-        , text config.text
+tabs : List { label : String, isActive : Bool, onClick : msg } -> Html msg
+tabs options =
+    div [ class "mb-6 inline-flex overflow-hidden rounded border border-gray-300" ]
+        (List.map tab options)
+
+
+tab : { label : String, isActive : Bool, onClick : msg } -> Html msg
+tab option =
+    let
+        colours =
+            if option.isActive then
+                "bg-teal-500 text-white"
+
+            else
+                "bg-white text-gray-700 hover:bg-gray-100"
+    in
+    button
+        [ type_ "button"
+        , class ("border-r border-gray-300 px-4 py-2 font-medium transition last:border-r-0 " ++ colours)
+        , onClick option.onClick
         ]
+        [ text option.label ]

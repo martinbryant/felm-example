@@ -15,8 +15,16 @@ type alias Model =
     { session : Session
     , todos : Status (List Todo)
     , input : String
-    , showDeleted : Bool
+    , filter : Filter
     }
+
+
+{-| Which todos the list shows; the server filters by `?status=`.
+-}
+type Filter
+    = Current
+    | Completed
+    | Deleted
 
 
 type Status a
@@ -27,7 +35,7 @@ type Status a
 type Msg
     = GotTodos (Result Api.Error (List Todo))
     | InputChanged String
-    | ToggleShowDeleted Bool
+    | FilterClicked Filter
     | SubmitClicked
     | AddedTodo (Result Api.Error Todo)
 
@@ -37,34 +45,40 @@ init session =
     ( { session = session
       , todos = Loading
       , input = ""
-      , showDeleted = False
+      , filter = Current
       }
     , case Session.cred session of
         Just cred ->
-            fetchTodos cred False
+            fetchTodos cred Current
 
         Nothing ->
             Cmd.none
     )
 
 
-{-| The server leaves deleted todos out unless asked.
--}
-fetchTodos : Api.Cred -> Bool -> Cmd Msg
-fetchTodos cred includeDeleted =
-    Api.get cred
-        ("/api/todo?includeDeleted=" ++ boolToString includeDeleted)
-        (Decode.list Todo.decoder)
-        GotTodos
+fetchTodos : Api.Cred -> Filter -> Cmd Msg
+fetchTodos cred filter =
+    let
+        path =
+            "/api/todo?status=" ++ filterName filter
+
+        decoder =
+            Decode.list Todo.decoder
+    in
+    Api.get cred path decoder GotTodos
 
 
-boolToString : Bool -> String
-boolToString bool =
-    if bool then
-        "true"
+filterName : Filter -> String
+filterName filter =
+    case filter of
+        Current ->
+            "current"
 
-    else
-        "false"
+        Completed ->
+            "completed"
+
+        Deleted ->
+            "deleted"
 
 
 toSession : Model -> Session
@@ -84,11 +98,11 @@ update msg model =
         InputChanged input ->
             ( { model | input = input }, Cmd.none, Nothing )
 
-        ToggleShowDeleted show ->
-            ( { model | showDeleted = show }
+        FilterClicked filter ->
+            ( { model | filter = filter }
             , case Session.cred model.session of
                 Just cred ->
-                    fetchTodos cred show
+                    fetchTodos cred filter
 
                 Nothing ->
                     Cmd.none
@@ -119,10 +133,16 @@ update msg model =
                         ( model, Cmd.none, Nothing )
 
         AddedTodo (Ok todo) ->
-            ( { model | todos = mapLoaded (\todos -> todos ++ [ todo ]) model.todos }
-            , Cmd.none
-            , Nothing
-            )
+            -- A new todo is current, so it only belongs in the list on that tab.
+            let
+                todos =
+                    if model.filter == Current then
+                        mapLoaded (\loaded -> loaded ++ [ todo ]) model.todos
+
+                    else
+                        model.todos
+            in
+            ( { model | todos = todos }, Cmd.none, Nothing )
 
         AddedTodo (Err error) ->
             ( model, Cmd.none, Just error )
@@ -165,9 +185,17 @@ viewTodos model =
     let
         addDisabled =
             String.isEmpty (String.trim model.input)
+
+        tabs =
+            Ui.tabs
+                [ { label = "Current", isActive = model.filter == Current, onClick = FilterClicked Current }
+                , { label = "Completed", isActive = model.filter == Completed, onClick = FilterClicked Completed }
+                , { label = "Deleted", isActive = model.filter == Deleted, onClick = FilterClicked Deleted }
+                ]
     in
     div []
-        [ case model.todos of
+        [ tabs
+        , case model.todos of
             Loading ->
                 p [ class "text-gray-500" ] [ text "Loading..." ]
 
@@ -193,12 +221,6 @@ viewTodos model =
                 ]
                 [ text "Add" ]
             ]
-        , Ui.toggle
-            { id = "deleted-toggle"
-            , text = "Show deleted?"
-            , isOn = model.showDeleted
-            , onToggle = ToggleShowDeleted
-            }
         ]
 
 
