@@ -38,6 +38,6 @@ RUN dotnet run --project Build.fsproj -- Bundle
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine
 COPY --from=build /workspace/deploy /app
 WORKDIR /app
-ENV ASPNETCORE_URLS=http://+:5000
-EXPOSE 5000
+# aspnet images listen on 8080 by default (same as safe-stack-example)
+EXPOSE 8080
 ENTRYPOINT [ "dotnet", "Server.dll" ]
